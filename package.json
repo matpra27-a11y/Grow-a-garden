@@ -1,0 +1,9 @@
+{
+  "name": "cultiva-tu-jardin",
+  "version": "0.1.0",
+  "description": "Juego de granja multijugador (beta) con three.js",
+  "type": "module",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}
