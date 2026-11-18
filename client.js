@@ -5,8 +5,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import {
-  World, Bots, CROPS, MUTS, WEATHER, EGGS, PETS, GEAR, NPCS, NPC_RANGE, GRID, CELL, MAX_PLAYERS, MAX_EQUIPPED,
-  plotInfo, cellWorld, worldToCell, fruitValue, stageOf, WORLD_RADIUS,
+  CROPS, MUTS, MUT_EMOJI, mutMult, WEATHER, EVENTS, EGGS, PETS, GEAR, RARITY, RAR, NPCS, NPC_RANGE, GRID, CELL, MAX_PLAYERS, MAX_EQUIPPED,
+  plotInfo, cellWorld, worldToCell, fruitValue, stageOf, WORLD_RADIUS, priceOf,
 } from './gamecore.js';
 
 const CFG = window.GAME_CONFIG || {};
@@ -20,8 +20,7 @@ const store = {
 const COARSE = matchMedia('(pointer: coarse)').matches;
 const QUALITY = store.get('jardin_q', COARSE ? 'low' : 'high');
 const LOW = QUALITY === 'low';
-let UID = store.get('jardin_uid', '');
-if (!UID) { UID = (crypto.randomUUID ? crypto.randomUUID() : 'u' + Math.random().toString(36).slice(2) + Date.now().toString(36)); store.set('jardin_uid', UID); }
+let SESSION = null; try { SESSION = JSON.parse(store.get('jardin_session', 'null')); } catch {}
 
 const AVATARS = [
   { id: 'farmer', label: 'Granjero', e: '🧑‍🌾' }, { id: 'farmerwoman', label: 'Granjera', e: '👩‍🌾' },
@@ -46,15 +45,22 @@ const scene = new THREE.Scene();
 const SKY = new THREE.Color(0x8fd3ff);
 scene.background = SKY.clone();
 scene.fog = new THREE.Fog(0x8fd3ff, 70, 250);
-const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 500);
+const camera = new THREE.PerspectiveCamera(66, 9 / 16, 0.1, 500);
 const hemi = new THREE.HemisphereLight(0xffffff, 0x77995a, 0.95); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff0cc, 1.7); sun.position.set(50, 90, 30); scene.add(sun); scene.add(sun.target);
 if (!LOW) {
   sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
   const sc = sun.shadow.camera; sc.left = -50; sc.right = 50; sc.top = 50; sc.bottom = -50; sc.near = 10; sc.far = 220; sun.shadow.bias = -0.0006;
 }
-function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
-addEventListener('resize', resize); resize();
+// El juego es SIEMPRE vertical (9:16). En pantallas más anchas se centra una "ventana de celular".
+function layout() {
+  const W = innerWidth, H = innerHeight; let w = W; const h = H;
+  if (W / H > 9 / 16) w = Math.floor(H * 9 / 16);
+  const app = $('app'); app.style.width = w + 'px'; app.style.height = h + 'px';
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  $('rotate').classList.toggle('hidden', !(COARSE && W > H));
+}
+addEventListener('resize', layout); addEventListener('orientationchange', () => setTimeout(layout, 150)); layout();
 
 // =====================================================================
 //  Assets (models.pack = todos los .glb juntos)
@@ -165,7 +171,7 @@ const world3d = new THREE.Group(); scene.add(world3d);
   const stone = new THREE.Mesh(new THREE.RingGeometry(4.5, 6.2, 40), new THREE.MeshLambertMaterial({ color: 0xbfb9a9 })); stone.rotation.x = -Math.PI / 2; stone.position.y = 0.04; world3d.add(stone);
   // caminos hacia el anillo de parcelas
   const pathMat = new THREE.MeshLambertMaterial({ color: 0xcfae78 });
-  for (let i = 0; i < 8; i++) { const geo = new THREE.PlaneGeometry(5, 22); geo.rotateX(-Math.PI / 2); const p = new THREE.Mesh(geo, pathMat); const a = i / 8 * Math.PI * 2; p.rotation.y = a; p.position.set(Math.sin(a) * 40, 0.015, Math.cos(a) * 40); world3d.add(p); }
+  for (let i = 0; i < MAX_PLAYERS; i++) { const q = plotInfo(i); const a = Math.atan2(q.x, q.z); const geo = new THREE.PlaneGeometry(6, 28); geo.rotateX(-Math.PI / 2); const p = new THREE.Mesh(geo, pathMat); p.rotation.y = a; p.position.set(Math.sin(a) * 28, 0.015, Math.cos(a) * 28); world3d.add(p); }
 }
 // Parcelas -------------------------------------------------------------
 const plotViews = [];      // i -> { group, plants (Group), views: Map(cell->{group,key}), sign, owner, mine }
@@ -276,9 +282,9 @@ const snow = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xfffff
 const rainbowArc = new THREE.Group(); rainbowArc.visible = false; scene.add(rainbowArc);
 ['#ff4d4d', '#ff9a3c', '#ffe14a', '#5ad65a', '#4aa8ff', '#8a5aff'].forEach((c, i) => { const t = new THREE.Mesh(new THREE.TorusGeometry(70 - i * 2.2, 1.1, 6, 40, Math.PI), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.75, fog: false })); rainbowArc.add(t); });
 rainbowArc.position.set(0, -2, -150);
-const WX_LOOK = { null: { sky: 0x8fd3ff, hemi: 0.95, sun: 1.7 }, sunny: { sky: 0x7fd0ff, hemi: 1.1, sun: 2.1 }, rainbow: { sky: 0x9ad9ff, hemi: 1.0, sun: 1.8 }, rain: { sky: 0x7d8fa0, hemi: 0.65, sun: 0.7 }, thunder: { sky: 0x4d5663, hemi: 0.5, sun: 0.4 }, frost: { sky: 0xc9e6f5, hemi: 0.95, sun: 1.2 } };
+const WX_LOOK = { null: { sky: 0x8fd3ff, hemi: 0.95, sun: 1.7, sunC: 0xfff0cc, fogN: 70, fogF: 250 }, sunny: { sky: 0x7fd0ff, hemi: 1.1, sun: 2.1, sunC: 0xffe39a, fogN: 90, fogF: 300 }, rainbow: { sky: 0x9ad9ff, hemi: 1.0, sun: 1.8, sunC: 0xfff0e0, fogN: 80, fogF: 280 }, rain: { sky: 0x7d8fa0, hemi: 0.65, sun: 0.7, sunC: 0xcfd8e0, fogN: 30, fogF: 150 }, thunder: { sky: 0x4d5663, hemi: 0.5, sun: 0.4, sunC: 0xb8c4dd, fogN: 20, fogF: 120 }, frost: { sky: 0xc9e6f5, hemi: 0.95, sun: 1.2, sunC: 0xdff3ff, fogN: 25, fogF: 140 } };
 let weather = { k: null, until: 0 }; let flash = 0, nextFlash = 3;
-function applyWeather() { const k = weather.k; rain.visible = k === 'rain' || k === 'thunder'; snow.visible = k === 'frost'; rainbowArc.visible = k === 'rainbow'; }
+function applyWeather() { const k = weather.k; rain.visible = k === 'rain' || k === 'thunder'; snow.visible = k === 'frost'; rainbowArc.visible = k === 'rainbow' || ev.k === 'rainbowgarden'; sfx.ambient(k); }
 
 // =====================================================================
 //  Estado del juego
@@ -295,10 +301,10 @@ function addPlayer(p) {
   const a = inst(AVATARS.some((x) => x.id === p.avatar) ? p.avatar : 'farmer', 0xdd9955);
   const body = fitModel(a.obj, { h: 2.0 }); shadows(body);
   const root = new THREE.Group(); root.add(body); root.position.set(p.x, 0, p.z); scene.add(root);
-  const label = makeLabel(p.name, { h: 0.62, fs: 42, depthTest: false }); label.position.y = 2.75; root.add(label);
+  const label = makeLabel((p.owner ? '👑 ' : '') + p.name, { h: 0.62, fs: 42, depthTest: false }); label.position.y = 2.75; root.add(label);
   let mixer = null, action = null;
   if (a.clips.length) { mixer = new THREE.AnimationMixer(a.obj); action = mixer.clipAction(a.clips[0]); action.play(); action.timeScale = 0; mixer.update(0); }
-  const pl = { id: p.id, name: p.name, plot: p.plot, root, body, label, mixer, action, tx: p.x, tz: p.z, ry: p.ry || 0, mv: 0, moving: false, sh: p.sh || 0, pets: [], petKey: '' };
+  const pl = { id: p.id, name: p.name, owner: !!p.owner, plot: p.plot, root, body, label, mixer, action, tx: p.x, tz: p.z, ry: p.ry || 0, mv: 0, moving: false, sh: p.sh || 0, pets: [], petKey: '' };
   body.rotation.y = pl.ry + YAW; players.set(p.id, pl); setPets(pl, p.pets || []); return pl;
 }
 function removePlayer(id) {
@@ -359,7 +365,11 @@ function makePlantView(pl) {
     else { const h = 0.4 + stage * 0.45; const m = new THREE.Mesh(new THREE.ConeGeometry(0.5, h, 6), new THREE.MeshLambertMaterial({ color: [0x7ac943, 0x5fb23a, 0x3f9a2a, 0xe0752b][stage] })); m.position.y = h / 2; g.add(m); }
     shadows(g);
     const mt = topMut(pl.m || []);
-    if (mt) { tint(g, mt === 'rainbow' ? 0xff66cc : MUTS[mt].color, 0.5); if (mt === 'rainbow') rainbowGroups.add(g); }
+    if (mt) {
+      tint(g, mt === 'rainbow' ? 0xff66cc : MUTS[mt].color, 0.5); if (mt === 'rainbow') rainbowGroups.add(g); pulseGroups.add(g);
+      const badge = makeLabel(pl.m.map((x) => MUT_EMOJI[x]).join('') + ' x' + fmtMult(mutMult(pl.m)), { h: 0.5, fs: 40, bg: 'rgba(0,0,0,.55)', depthTest: false });
+      badge.position.y = ((CROPS[pl.k] && CROPS[pl.k].size) || 1.5) + 0.7; g.add(badge); g.userData.badge = badge;
+    }
   }
   g.userData.pick = { type: 'plant', cell: pl.c };
   return g;
@@ -367,14 +377,15 @@ function makePlantView(pl) {
 function applyPlot(i, plants) {
   const pv = plotViews[i]; if (!pv) return;
   const data = new Map(plants.map((p) => [p.c, p])); plotData[i] = data;
-  for (const [cell, v] of pv.views) if (!data.has(cell)) { pv.plants.remove(v.group); rainbowGroups.delete(v.group); pv.views.delete(cell); }
+  for (const [cell, v] of pv.views) if (!data.has(cell)) { dropView(pv, v); pv.views.delete(cell); mutEmit.delete(i + ':' + cell); }
   for (const [cell, pl] of data) {
     const key = pl.k + '|' + stageOfPub(pl) + '|' + (pl.m || []).join(',');
     const old = pv.views.get(cell); if (old && old.key === key) continue;
-    if (old) { pv.plants.remove(old.group); rainbowGroups.delete(old.group); }
+    if (old) dropView(pv, old);
     const g = makePlantView(pl);
     g.position.set(((cell % GRID) - (GRID - 1) / 2) * CELL, 0.05, (Math.floor(cell / GRID) - (GRID - 1) / 2) * CELL); g.rotation.y = (cell * 2.399) % 6.28;
     pv.plants.add(g); pv.views.set(cell, { group: g, key });
+    { const w = cellWorld(i, cell); if (pl.m && pl.m.length && CROPS[pl.k]) mutEmit.set(i + ':' + cell, { x: w.x, y: CROPS[pl.k].size * 0.55, z: w.z, m: pl.m }); else mutEmit.delete(i + ':' + cell); }
     if (old || inGame) { g.scale.setScalar(0.3); tweens.push({ g, t: 0, dur: 0.45 }); }
   }
   if (i === myPlot) refreshHarvestBtn();
@@ -407,7 +418,7 @@ function chatLine(name, text) {
   const d = document.createElement('div'); const b = document.createElement('b'); b.textContent = name + ': '; d.appendChild(b); d.appendChild(document.createTextNode(text));
   const log = $('chatlog'); log.appendChild(d); while (log.children.length > 6) log.firstChild.remove(); setTimeout(() => d.remove(), 12000);
 }
-const modals = ['shop', 'bag', 'pause', 'how'];
+const modals = ['shop', 'bag', 'pause', 'how', 'admin'];
 function openModal(id) { modals.forEach((m) => $(m).classList.toggle('hidden', m !== id)); if (id === 'bag') renderBag(); if (id === 'pause') renderPause(); }
 function closeModals() { modals.forEach((m) => $(m).classList.add('hidden')); openShopKey = null; }
 const anyModal = () => modals.some((m) => !$(m).classList.contains('hidden'));
@@ -442,12 +453,12 @@ let plistT = 0;
 function renderPlayers() {
   const arr = [...players.values()].sort((a, b) => b.sh - a.sh);
   $('pcount').textContent = arr.length;
-  $('plistBody').innerHTML = arr.map((p, i) => `<div class="pr ${p === self ? 'me' : ''}"><span>${i + 1}. ${esc(p.name)}</span><span>💰${compact(p.sh)}</span></div>`).join('');
+  $('plistBody').innerHTML = arr.map((p, i) => `<div class="pr ${p === self ? 'me' : ''}"><span>${i + 1}. ${p.owner ? '👑 ' : ''}${esc(p.name)}</span><span>💰${compact(p.sh)}</span></div>`).join('');
 }
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const compact = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(1) + 'k' : fmt(n);
 $('plist').querySelector('.hd').addEventListener('click', () => $('plist').classList.toggle('open'));
-const tagHtml = (ms) => ms.map((m) => `<span class="tag" style="background:${MUTS[m].color}">${MUTS[m].name} x${MUTS[m].mult}</span>`).join('');
+const tagHtml = (ms) => ms.map((m) => `<span class="tag" style="background:${MUTS[m].color}">${MUT_EMOJI[m]}${MUTS[m].name} x${MUTS[m].mult}</span>`).join('');
 
 // ---------- Tiendas ----------
 function tryOpenShop(key) {
@@ -471,12 +482,13 @@ function renderShop() {
     me.fruits.slice(0, 60).forEach((f, i) => { h += `<div class="item"><div class="e">${CROPS[f.k].emoji}</div><div class="t">${CROPS[f.k].name} ${f.w}kg ${tagHtml(f.m)}<small>💰${fmt(fruitValue(f))}</small></div><button class="btn alt sm" data-sell="${i}">Vender</button></div>`; });
     if (!me.fruits.length) h += '<p>No tenés frutas. ¡Cosechá tu jardín! 🌱</p>';
   } else {
-    const defs = key === 'seed' ? CROPS : key === 'gear' ? GEAR : EGGS; const st = stock[key] || {};
-    const keys = Object.keys(defs).sort((a, b) => (key === 'seed' ? defs[a].seed - defs[b].seed : defs[a].price - defs[b].price));
+    const defs = key === 'seed' ? CROPS : key === 'gear' ? GEAR : EGGS; const st = stock[key] || {}; const rk = key === 'seed' ? 'crop' : key;
+    const keys = Object.keys(defs).sort((a, b) => priceOf(key, a) - priceOf(key, b));
     keys.forEach((k) => {
-      const d = defs[k]; const price = key === 'seed' ? d.seed : d.price; const have = st[k] || 0;
+      const d = defs[k]; const price = priceOf(key, k, stock.deal); const have = st[k] || 0; const isDeal = !!(stock.deal && stock.deal.shop === key && stock.deal.k === k);
+      const rar = RARITY[(RAR[rk] || {})[k]] || RARITY.common;
       const extra = key === 'seed' ? `Crece en ${Math.round(d.grow / 60 * 10) / 10 || 0.3} min · vende ~💰${d.sell}${d.regrow ? ' · da varias veces' : ''}` : key === 'gear' ? d.desc : `Eclosiona en ${d.hatch}s`;
-      h += `<div class="item ${have ? '' : 'out'}"><div class="e">${d.emoji}</div><div class="t"><b>${d.name}</b> <small>${extra}</small><small>💰${fmt(price)} · Stock: ${have}</small></div>${have ? `<button class="btn sm" data-buy="${k}" data-q="1">x1</button><button class="btn alt sm" data-buy="${k}" data-q="5">x5</button>` : '<small>Agotado</small>'}</div>`;
+      h += `<div class="item ${have ? '' : 'out'} ${isDeal ? 'deal' : ''}"><div class="e">${d.emoji}</div><div class="t"><b>${d.name}</b><span class="rar" style="background:${rar.color}">${rar.name}</span>${isDeal ? ' <b style="color:#e06000">🔥 -30%</b>' : ''}<small>${extra}</small><small>💰${fmt(price)}${isDeal ? ' <s>' + fmt(priceOf(key, k)) + '</s>' : ''} · Stock: ${have}</small></div>${have ? `<div style="display:flex;flex-direction:column;gap:4px"><button class="btn sm" data-buy="${k}" data-q="1">x1</button><button class="btn alt sm" data-buy="${k}" data-q="5">x5</button></div>` : '<small>Agotado</small>'}</div>`;
     });
   }
   body.innerHTML = h;
@@ -497,7 +509,7 @@ function renderBag() {
     h = `<p style="font-size:13px">Equipadas: ${me.equipped.length}/${MAX_EQUIPPED}. Tocá para equipar/desequipar.</p>`;
     if (!me.pets.length) h += '<p>No tenés mascotas. Comprá un huevo con la Abuela Rosa 🥚</p>';
     me.pets.forEach((nm, i) => { const p = PETS[nm]; const on = me.equipped.includes(i); const fx = [p.sell ? `💰 vende +${Math.round(p.sell * 100)}%` : '', p.grow ? `🌱 crece +${Math.round(p.grow * 100)}%` : ''].filter(Boolean).join(' · ');
-      h += `<div class="item"><div class="e">${p.emoji}</div><div class="t"><b>${p.name}</b><small>${fx}</small></div><button class="btn sm ${on ? '' : 'dim'}" data-eq="${i}">${on ? 'Equipada' : 'Equipar'}</button></div>`; });
+      h += `<div class="item"><div class="e">${p.emoji}</div><div class="t"><b>${p.name}</b><span class="rar" style="background:${(RARITY[RAR.pet[nm]] || RARITY.common).color}">${(RARITY[RAR.pet[nm]] || RARITY.common).name}</span><small>${fx}</small></div><button class="btn sm ${on ? '' : 'dim'}" data-eq="${i}">${on ? 'Equipada' : 'Equipar'}</button></div>`; });
   }
   b.innerHTML = h; b.querySelectorAll('[data-eq]').forEach((x) => x.addEventListener('click', () => net.send({ t: 'equip', idx: +x.dataset.eq })));
 }
@@ -512,10 +524,11 @@ function renderPause() {
 // =====================================================================
 function inRange(cell) { const w = cellWorld(myPlot, cell); return Math.hypot(self.root.position.x - w.x, self.root.position.z - w.z) <= 22; }
 function cellFx(cell, color) { const w = cellWorld(myPlot, cell); puff(w.x, 0.8, w.z, color); }
+function setNdc(cx, cy) { const r = canvas.getBoundingClientRect(); ndc.set((cx - r.left) / r.width * 2 - 1, -((cy - r.top) / r.height) * 2 + 1); }
 const ray = new THREE.Raycaster(); const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); const ndc = new THREE.Vector2(); const hitPt = new THREE.Vector3();
 function doTap(cx, cy) {
   if (!inGame || !self || anyModal()) return;
-  ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
+  setNdc(cx, cy); ray.setFromCamera(ndc, camera);
   const hits = ray.intersectObjects([...npcGroups, ...ownPlantGroups()], true);
   let pick = null; if (hits.length) { let o = hits[0].object; while (o && !(o.userData && o.userData.pick)) o = o.parent; if (o) pick = o.userData.pick; }
   if (pick && pick.type === 'npc') return tryOpenShop(pick.key);
@@ -526,17 +539,19 @@ function doTap(cx, cy) {
   if (!inRange(cell)) return toast('Estás lejos de tu parcela. Usá el botón 🏡', 'bad');
   const pl = (plotData[myPlot] || new Map()).get(cell);
   if (pl) return plantTap(pl);
-  if (sel.type === 'seed') { net.send({ t: 'plant', cell, k: sel.k }); cellFx(cell, 0x8be35a); }
-  else if (sel.type === 'egg' || sel.type === 'gear') { net.send({ t: 'place', cell, k: sel.k }); cellFx(cell, 0xffe27a); }
+  if (sel.type === 'seed') { net.send({ t: 'plant', cell, k: sel.k }); cellFx(cell, 0x8be35a); sfx.pop(); }
+  else if (sel.type === 'egg' || (sel.type === 'gear' && sel.k === 'sprinkler')) { net.send({ t: 'place', cell, k: sel.k }); cellFx(cell, 0xffe27a); sfx.pop(); }
+  else if (sel.type === 'gear') toast('Usalo sobre una planta 🌱');
   else toast('Elegí una semilla 🌱 en la barra de abajo y tocá una celda libre', '');
 }
 function plantTap(pl) {
   const isEgg = pl.k.startsWith('egg:');
+  if (sel.type === 'gear' && sel.k !== 'sprinkler') { net.send({ t: 'use', cell: pl.c, k: sel.k }); return cellFx(pl.c, 0xffe27a); }
   if (sel.type === 'shovel') { net.send({ t: 'shovel', cell: pl.c }); return cellFx(pl.c, 0xb08050); }
   if (isEgg) { if (pl.p >= pl.g) { net.send({ t: 'hatch', cell: pl.c }); return cellFx(pl.c, 0xff9ad5); } return toast('🥚 El huevo todavía no eclosiona…'); }
   if (pl.r) { net.send({ t: 'harvest', cell: pl.c }); return cellFx(pl.c, 0xffe27a); }
-  if (sel.type === 'can') { net.send({ t: 'water', cell: pl.c }); return; }
-  const st = stageOfPub(pl); toast(`${CROPS[pl.k].emoji} ${CROPS[pl.k].name}: ${['Brotando', 'Creciendo', 'Casi lista'][st] || ''}${pl.m.length ? ' · ' + pl.m.map((m) => MUTS[m].name).join(', ') : ''}`);
+  if (sel.type === 'can') { net.send({ t: 'water', cell: pl.c }); sfx.water(); return; }
+  const st = stageOfPub(pl); toast(`${CROPS[pl.k].emoji} ${CROPS[pl.k].name}: ${['Brotando', 'Creciendo', 'Casi lista'][st] || ''}${pl.m.length ? ' · ' + pl.m.map((m) => MUT_EMOJI[m] + MUTS[m].name).join(', ') + ' (x' + fmtMult(mutMult(pl.m)) + ')' : ''}`);
 }
 function teleport(x, z) { if (!self) return; self.root.position.x = x; self.root.position.z = z; self.tx = x; self.tz = z; net.send({ t: 'pos', x, z, ry: self.ry, mv: 0 }); }
 function goGarden() { if (myPlot < 0) return; const p = plotInfo(myPlot); const d = Math.hypot(p.x, p.z); teleport(p.x - p.x / d * 11, p.z - p.z / d * 11); cam.yaw = Math.atan2(p.x, p.z); closeModals(); }
@@ -545,7 +560,7 @@ $('bGarden').onclick = goGarden; $('bTown').onclick = goTown; $('pGarden').oncli
 $('bHarvest').onclick = () => net.send({ t: 'harvestAll' });
 $('bBag').onclick = () => openModal('bag'); $('bMenu').onclick = () => openModal('pause');
 $('pHow').onclick = () => openModal('how'); $('btnHow').onclick = () => openModal('how');
-$('pExit').onclick = () => location.reload();
+$('pExit').onclick = () => { store.set('jardin_session', ''); location.reload(); };
 $('pFull').onclick = () => { const e = document.documentElement; (e.requestFullscreen || e.webkitRequestFullscreen || (() => {})).call(e); };
 const toggleQ = () => { store.set('jardin_q', LOW ? 'high' : 'low'); location.reload(); };
 $('pQuality').onclick = toggleQ; $('btnQuality').onclick = toggleQ; $('btnQuality').textContent = '⚙️ Gráficos: ' + (LOW ? 'Bajos' : 'Altos');
@@ -604,7 +619,7 @@ $('bJump').addEventListener('pointerdown', (e) => { e.preventDefault(); jump(); 
 const cursor = new THREE.Mesh(new THREE.PlaneGeometry(CELL * 0.95, CELL * 0.95), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthWrite: false })); cursor.rotation.x = -Math.PI / 2; cursor.visible = false; scene.add(cursor);
 function hoverMove(cx, cy) {
   cursor.visible = false; if (!inGame || !self || anyModal() || !(sel.type === 'seed' || sel.type === 'egg' || sel.type === 'gear')) return;
-  ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
+  setNdc(cx, cy); ray.setFromCamera(ndc, camera);
   if (!ray.ray.intersectPlane(groundPlane, hitPt)) return; const c = worldToCell(myPlot, hitPt.x, hitPt.z); if (c < 0) return;
   const w = cellWorld(myPlot, c); cursor.position.set(w.x, 0.09, w.z); cursor.rotation.z = -plotInfo(myPlot).rot; cursor.visible = true;
   cursor.material.color.set((plotData[myPlot] || new Map()).has(c) ? 0xff5555 : 0x66ff66);
@@ -622,7 +637,7 @@ function onNet(m) {
       m.players.forEach((p) => { addPlayer(p); setPlotOwner(p.plot, p.name, p.id === myId); });
       self = players.get(myId); self.root.position.set(m.players.find((p) => p.id === myId).x, 0, m.players.find((p) => p.id === myId).z);
       for (const i in m.plots) applyPlot(+i, m.plots[i]);
-      stock = m.stock; weather = m.weather; applyWeather(); enterGame(); refreshHUD(); renderPlayers();
+      stock = m.stock; weather = m.weather; ev = m.event || { k: null, until: 0 }; isOwner = !!m.owner; $('bAdmin').classList.toggle('hidden', !isOwner); applyWeather(); applyEventFx(); enterGame(); refreshHUD(); renderPlayers(); if (ev.k) showBanner(ev.k, true);
       toast('¡Bienvenido, ' + me.name + '! Tu parcela es la que tiene ⭐ (botón 🏡)', 'good'); break;
     }
     case 'pj': addPlayer(m.p); setPlotOwner(m.p.plot, m.p.name, false); renderPlayers(); chatLine('🌱', m.p.name + ' se unió'); break;
@@ -631,17 +646,21 @@ function onNet(m) {
     case 'plot': applyPlot(m.i, m.plants); break;
     case 'me': me = m.me; refreshHUD(); break;
     case 'stock': stock = m; if (openShopKey) renderShop(); break;
-    case 'weather': weather = m; applyWeather(); if (m.k) toast(WEATHER[m.k].emoji + ' ¡' + WEATHER[m.k].name + '! Mutaciones activas', 'gold'); break;
+    case 'weather': weather = m; applyWeather(); if (m.k) sfx.chime(); if (m.k) toast(WEATHER[m.k].emoji + ' ¡' + WEATHER[m.k].name + '! Mutaciones activas', 'gold'); break;
     case 'lb': for (const [id, sh] of m.d) { const p = players.get(id); if (p) p.sh = sh; } renderPlayers(); break;
     case 'pi': { const p = players.get(m.id); if (p) setPets(p, m.pets); break; }
-    case 'toast': toast(m.msg, m.kind); break;
-    case 'harv': toast('🧺 +' + m.n + (m.n > 1 ? ' frutas' : ' fruta'), 'good'); break;
-    case 'sold': toast(`💰 Vendiste ${m.n} fruta${m.n > 1 ? 's' : ''} por ${fmt(m.total)} Sheckles`, 'gold'); if (self) puff(self.root.position.x, 2, self.root.position.z, 0xffd23a, 14); break;
-    case 'hatched': toast(`🎉 ¡Nació ${PETS[m.pet].emoji} ${PETS[m.pet].name}!`, 'gold'); if (self) puff(self.root.position.x, 2, self.root.position.z, 0xff9ad5, 16); break;
+    case 'toast': toast(m.msg, m.kind); if (/^Compraste/.test(m.msg)) sfx.buy(); break;
+    case 'harv': sfx.pop(); toast('🧺 +' + m.n + (m.n > 1 ? ' frutas' : ' fruta'), 'good'); break;
+    case 'sold': sfx.coin(); toast(`💰 Vendiste ${m.n} fruta${m.n > 1 ? 's' : ''} por ${fmt(m.total)} Sheckles`, 'gold'); if (self) puff(self.root.position.x, 2, self.root.position.z, 0xffd23a, 14); break;
+    case 'hatched': sfx.hatch(); toast(`🎉 ¡Nació ${PETS[m.pet].emoji} ${PETS[m.pet].name}!`, 'gold'); if (self) puff(self.root.position.x, 2, self.root.position.z, 0xff9ad5, 16); break;
     case 'chat': chatLine(m.name, m.text); break;
     case 'wet': { const w = cellWorld(m.plot, m.c); puff(w.x, 1.2, w.z, 0x66bbff, 6); break; }
     case 'spr': addSprinkler(m.plot, m.c, m.dur); break;
-    case 'error': showMenu(m.msg); break;
+    case 'event': setEvent(m); break;
+    case 'evtick': toast('💰 +' + m.amt + ' Sheckles de la lluvia', 'gold'); sfx.coin(); if (self) puff(self.root.position.x, 2.5, self.root.position.z, 0xffd23a, 10); break;
+    case 'evend': showEventEnd(m); break;
+    case 'adm': renderAdmin(m.state); break;
+    case 'error': lastErr = m.msg; break;
   }
 }
 const sprinklers = [];
@@ -660,45 +679,96 @@ function serverUrl() {
   if (location.protocol === 'file:' || /\.github\.io$/.test(location.hostname)) return null;
   return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
 }
-function profile() { return { name: ($('name').value || 'Granjero').trim() || 'Granjero', avatar: store.get('jardin_av', 'farmer') }; }
-function showMenu(msg) { $('menu').classList.remove('hidden'); $('menuStatus').textContent = msg || ''; $('btnPlay').disabled = false; $('btnPlay').textContent = '▶ Jugar'; }
-function connectOnline() {
-  const url = serverUrl(); const pr = profile(); store.set('jardin_name', pr.name);
-  if (!url) { $('menuStatus').innerHTML = 'Este sitio no tiene servidor multijugador configurado (ver <b>config.js</b> y el README). Podés probar el modo sin conexión 👇'; return; }
-  $('btnPlay').disabled = true; $('btnPlay').textContent = 'Conectando…'; let t0 = performance.now(), joined = false, ws;
-  const tick = setInterval(() => { if (joined) return clearInterval(tick); const s = Math.floor((performance.now() - t0) / 1000); $('menuStatus').textContent = s < 6 ? 'Conectando al servidor…' : `Despertando el servidor… (${s}s, puede tardar hasta 1 min la primera vez)`; if (s > 90) { clearInterval(tick); try { ws.close(); } catch {} showMenu('No se pudo conectar. Probá de nuevo o jugá sin conexión.'); } }, 500);
-  try { ws = new WebSocket(url); } catch (e) { clearInterval(tick); return showMenu('Dirección de servidor inválida en config.js'); }
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', uid: UID, name: pr.name, avatar: pr.avatar }));
-  ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } if (m.t === 'welcome') { joined = true; net.mode = 'online'; } onNet(m); };
-  ws.onerror = () => { if (!joined) { clearInterval(tick); showMenu('No se pudo conectar al servidor. ¿Está encendido? Podés jugar sin conexión.'); } };
-  ws.onclose = () => { clearInterval(tick); if (joined && inGame) { inGame = false; closeModals(); $('menu').classList.remove('hidden'); $('hud').classList.add('hidden'); showMenu('⚠️ Se perdió la conexión con el servidor. Recargá la página.'); $('btnPlay').onclick = () => location.reload(); $('btnPlay').textContent = '↻ Recargar'; } };
-  net.send = (o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
+const httpBase = () => { const u = serverUrl(); return u ? u.replace(/^ws/, 'http').replace(/\/ws$/, '') : null; };
+let ws = null, authMode = 'login', isOwner = false, lastErr = '', curAvatar = store.get('jardin_av', 'farmer');
+function setBusy(b) { $('btnAuth').disabled = b; $('btnResume').disabled = b; $('btnAuth').textContent = b ? 'Conectando…' : (authMode === 'login' ? '▶ Entrar' : '✔ Crear cuenta y jugar'); $('btnResume').textContent = b ? 'Conectando…' : '▶ Jugar'; }
+function showMenu(msg) { $('menu').classList.remove('hidden'); $('menuStatus').textContent = msg || ''; setBusy(false); }
+function showAuth() { $('resumeBox').classList.add('hidden'); $('authBox').classList.remove('hidden'); }
+let nameT = 0;
+function checkName() {
+  const st = $('nameState'), inp = $('user'); clearTimeout(nameT); st.className = ''; st.textContent = ''; inp.classList.remove('bad', 'good');
+  if (authMode !== 'reg' || !inp.value.trim() || !httpBase()) return;
+  nameT = setTimeout(async () => {
+    try {
+      const r = await (await fetch(httpBase() + '/api/name?u=' + encodeURIComponent(inp.value.trim()))).json();
+      if (inp.value.trim() === '') return;
+      st.className = r.ok ? 'good' : 'bad'; inp.classList.add(r.ok ? 'good' : 'bad');
+      st.textContent = r.ok ? '✅ Nombre disponible' : (r.taken ? '❌ Este nombre de usuario ya está en uso' : '❌ ' + r.msg);
+    } catch {}
+  }, 350);
 }
-let offlineWorld = null;
-function startOffline() {
-  const pr = profile(); store.set('jardin_name', pr.name); net.mode = 'offline';
-  const clone = (o) => JSON.parse(JSON.stringify(o)); let localId = null;
-  const w = new World({ send: (id, msg) => { if (id === localId) onNet(clone(msg)); }, broadcast: (msg, ex) => { if (ex !== localId) onNet(clone(msg)); } });
-  try { const s = store.get('jardin_offline', ''); if (s) w.importProfiles(JSON.parse(s)); } catch {}
-  const bots = new Bots(w, 26); localId = w.nextId; offlineWorld = w;
-  net.send = (o) => w.handle(localId, clone(o));
-  let last = performance.now(), pt = 0, sv = 0;
-  setInterval(() => { const n = performance.now(), dt = Math.min(0.5, (n - last) / 1000); last = n; bots.tick(dt); w.tick(dt); pt += dt; sv += dt; if (pt >= 0.1) { pt = 0; onNet(clone(w.positionsMsg())); } if (sv > 10) { sv = 0; saveOffline(); } }, 100);
-  addEventListener('beforeunload', saveOffline);
-  function saveOffline() { const all = w.exportProfiles(); for (const k of Object.keys(all)) if (k.startsWith('bot-')) delete all[k]; store.set('jardin_offline', JSON.stringify(all)); }
-  const r = w.join(UID, pr); if (r.error) showMenu(r.error);
+function setAuthMode(m) {
+  authMode = m; $('tabLogin').classList.toggle('on', m === 'login'); $('tabReg').classList.toggle('on', m === 'reg');
+  $('pass2').classList.toggle('hidden', m !== 'reg'); $('pass').autocomplete = m === 'reg' ? 'new-password' : 'current-password';
+  $('authMsg').textContent = ''; setBusy(false); checkName();
+}
+function goFullPortrait() {
+  if (!COARSE) return;
+  try { const e = document.documentElement; const p = (e.requestFullscreen || e.webkitRequestFullscreen || (() => Promise.reject())).call(e); Promise.resolve(p).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('portrait')).catch(() => {}); } catch {}
+}
+function connect(first) {
+  const url = serverUrl();
+  if (!url) return showMenu('Este sitio no tiene servidor multijugador configurado (ver config.js y el README).');
+  goFullPortrait(); setBusy(true); lastErr = ''; $('menuStatus').textContent = '';
+  const t0 = performance.now(); let joined = false, done = false;
+  try { ws = new WebSocket(url); } catch (e) { return showMenu('Dirección de servidor inválida en config.js'); }
+  const sock = ws;
+  const tick = setInterval(() => {
+    if (joined || done) return clearInterval(tick); const s = Math.floor((performance.now() - t0) / 1000);
+    $('menuStatus').textContent = s < 6 ? 'Conectando al servidor…' : `Despertando el servidor… (${s}s, la primera vez puede tardar hasta 1 min)`;
+    if (s > 90) { clearInterval(tick); done = true; try { sock.close(); } catch {} showMenu('No se pudo conectar. Probá de nuevo en un momento.'); }
+  }, 500);
+  sock.onopen = () => sock.send(JSON.stringify({ ...first, avatar: curAvatar }));
+  sock.onmessage = (e) => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if (m.t === 'authok') { SESSION = { user: m.user, token: m.token }; store.set('jardin_session', JSON.stringify(SESSION)); isOwner = !!m.owner; return; }
+    if (m.t === 'autherr') { clearInterval(tick); done = true; $('authMsg').textContent = m.msg; if (/vencida/.test(m.msg)) { SESSION = null; store.set('jardin_session', ''); showAuth(); } showMenu(''); try { sock.close(); } catch {} return; }
+    if (m.t === 'full') { clearInterval(tick); done = true; showMenu('🚫 ' + m.msg); return; }
+    if (m.t === 'welcome') { joined = true; clearInterval(tick); net.mode = 'online'; }
+    onNet(m);
+  };
+  sock.onerror = () => { if (!joined && !done) { clearInterval(tick); done = true; showMenu('No se pudo conectar al servidor. ¿Está encendido?'); } };
+  sock.onclose = () => {
+    clearInterval(tick); if (done || sock !== ws) return;
+    if (inGame) { inGame = false; closeModals(); $('hud').classList.add('hidden'); [...players.keys()].forEach(removePlayer); self = null; }
+    showMenu(lastErr || (joined ? '⚠️ Se perdió la conexión con el servidor. Volvé a entrar.' : 'No se pudo conectar al servidor.'));
+  };
+  net.send = (o) => { if (sock.readyState === 1) sock.send(JSON.stringify(o)); };
 }
 function enterGame() {
   inGame = true; $('menu').classList.add('hidden'); $('hud').classList.remove('hidden');
-  cam.yaw = 0; cam.pitch = 0.5; goTown();
+  cam.yaw = 0; cam.pitch = 0.55; cam.dist = 15; goTown(); sfx.init();
 }
-// Menú: avatares
+function submitAuth() {
+  const user = $('user').value.trim(), pass = $('pass').value;
+  if (!user || !pass) return void ($('authMsg').textContent = 'Completá usuario y contraseña');
+  if (authMode === 'reg') {
+    if (pass.length < 4) return void ($('authMsg').textContent = 'La contraseña debe tener al menos 4 caracteres');
+    if (pass !== $('pass2').value) return void ($('authMsg').textContent = 'Las contraseñas no coinciden');
+  }
+  $('authMsg').textContent = ''; store.set('jardin_lastuser', user);
+  connect({ t: authMode === 'reg' ? 'register' : 'login', user, pass });
+}
+// contador de jugadores del servidor en el menú
+async function pollCount() {
+  const el = $('srvCount'), b = httpBase(); if (!b) { el.textContent = '🖥️ Sin servidor configurado'; return; }
+  try {
+    const c = new AbortController(); const to = setTimeout(() => c.abort(), 5000);
+    const r = await (await fetch(b + '/health', { signal: c.signal })).json(); clearTimeout(to);
+    el.textContent = `🖥️ Servidor: ${r.players}/${r.max} jugadores` + (r.players >= r.max ? ' · LLENO' : '');
+  } catch { el.textContent = '😴 Servidor dormido o apagado (entrar lo despierta)'; }
+}
 {
-  const wrap = $('avatars'); let cur = store.get('jardin_av', 'farmer');
-  AVATARS.forEach((a) => { const b = document.createElement('button'); b.innerHTML = `<b>${a.e}</b>${a.label}`; if (a.id === cur) b.className = 'on'; b.onclick = () => { cur = a.id; store.set('jardin_av', cur); [...wrap.children].forEach((c) => c.classList.remove('on')); b.classList.add('on'); }; wrap.appendChild(b); });
-  $('name').value = store.get('jardin_name', '') || 'Granjero' + Math.floor(Math.random() * 900 + 100);
-  $('btnPlay').onclick = connectOnline;
-  $('btnOffline').onclick = () => { $('btnOffline').disabled = true; startOffline(); };
+  const wrap = $('avatars');
+  AVATARS.forEach((a) => { const b = document.createElement('button'); b.innerHTML = `<b>${a.e}</b>${a.label}`; if (a.id === curAvatar) b.className = 'on'; b.onclick = () => { curAvatar = a.id; store.set('jardin_av', curAvatar); [...wrap.children].forEach((c) => c.classList.remove('on')); b.classList.add('on'); }; wrap.appendChild(b); });
+  $('user').value = store.get('jardin_lastuser', '');
+  if (SESSION && SESSION.user && SESSION.token) { $('resumeBox').classList.remove('hidden'); $('authBox').classList.add('hidden'); $('resumeName').textContent = SESSION.user; }
+  $('btnResume').onclick = () => connect({ t: 'resume', user: SESSION.user, token: SESSION.token });
+  $('btnSwitch').onclick = () => { SESSION = null; store.set('jardin_session', ''); showAuth(); };
+  $('tabLogin').onclick = () => setAuthMode('login'); $('tabReg').onclick = () => setAuthMode('reg');
+  $('btnAuth').onclick = submitAuth; $('user').addEventListener('input', checkName);
+  [$('user'), $('pass'), $('pass2')].forEach((i) => i.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') submitAuth(); }));
+  setAuthMode('login'); pollCount(); setInterval(() => { if (!inGame) pollCount(); }, 6000);
 }
 
 // =====================================================================
@@ -732,16 +802,12 @@ function frame() {
     const pr = $('prompt'); if (nearNpc && !anyModal()) { pr.textContent = `${NPC_EMOJI[nearNpc]} ${NPCS[nearNpc].title}${COARSE ? '' : ' (E)'}`; pr.classList.remove('hidden'); pr.onclick = () => tryOpenShop(nearNpc); } else pr.classList.add('hidden');
     sun.position.set(p.x + 50, 90, p.z + 30); sun.target.position.set(p.x, 0, p.z);
     // HUD cada 0.5 s
-    uiT += dt; if (uiT > 0.5) { uiT = 0;
-      const wk = weather.k; $('wx').textContent = wk ? `${WEATHER[wk].emoji} ${WEATHER[wk].name} · ${Math.max(0, Math.ceil(weather.until - srvNow()))}s` : '☀️ Despejado';
-      const left = Math.max(0, stock.next - srvNow()); $('rs').textContent = `🛒 Reposición: ${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
-      updateShopSub();
-    }
+    uiT += dt; if (uiT > 0.5) { uiT = 0; hudTick(); }
   } else {
     menuA += dt * 0.08; camera.position.set(Math.sin(menuA) * 60, 24, Math.cos(menuA) * 60); camera.lookAt(0, 3, 0);
   }
   camera.getWorldPosition(camPos);
-  updatePlayers(dt, camPos); npcMixers.forEach((m) => m.update(dt)); updateFx(dt);
+  updatePlayers(dt, camPos); npcMixers.forEach((m) => m.update(dt)); updateFx(dt); updateBolts(dt); updateSparks(dt); updateEmitters(dt, t, camPos); updateEventFx(dt, t, camPos);
   // culling de parcelas lejanas (solo plantas)
   cullT += dt; if (cullT > 0.4) { cullT = 0; for (const pv of plotViews) pv.plants.visible = Math.hypot(pv.cx - camPos.x, pv.cz - camPos.z) < 95; }
   // huevos listos tiemblan
@@ -751,10 +817,10 @@ function frame() {
   // aspersores
   for (let i = sprinklers.length - 1; i >= 0; i--) { const s = sprinklers[i]; if (performance.now() > s.until) { plotViews[s.plot].plants.remove(s.g); sprinklers.splice(i, 1); continue; } if (Math.random() < dt * 12) { const w = cellWorld(s.plot, s.c); puff(w.x, 1.1, w.z, 0x66ccff, 1); } }
   // clima visual
-  const look = WX_LOOK[weather.k] || WX_LOOK.null;
-  scene.background.lerp(new THREE.Color(look.sky), Math.min(1, dt * 1.5)); scene.fog.color.copy(scene.background);
+  const look = Object.assign({}, WX_LOOK[weather.k] || WX_LOOK.null, evLook());
+  scene.background.lerp(new THREE.Color(look.sky), Math.min(1, dt * 1.5)); scene.fog.color.copy(scene.background); { const kk = Math.min(1, dt * 1.5); scene.fog.near += (look.fogN - scene.fog.near) * kk; scene.fog.far += (look.fogF - scene.fog.far) * kk; sun.color.lerp(_tc.set(look.sunC), kk); }
   hemi.intensity += (look.hemi - hemi.intensity) * Math.min(1, dt * 1.5); sun.intensity += (look.sun + flash - sun.intensity) * Math.min(1, dt * 8);
-  if (weather.k === 'thunder') { nextFlash -= dt; if (nextFlash < 0) { flash = 3; nextFlash = 3 + Math.random() * 6; } flash = Math.max(0, flash - dt * 9); } else flash = 0;
+  if (weather.k === 'thunder') { nextFlash -= dt; if (nextFlash < 0) { flash = 3; nextFlash = 3 + Math.random() * 6; strike(); } flash = Math.max(0, flash - dt * 9); } else flash = 0;
   if (rain.visible || snow.visible) {
     const pos = (rain.visible ? rainGeo : snowGeo).attributes.position, a = pos.array, rainy = rain.visible;
     const cx = camPos.x, cz = camPos.z; (rainy ? rain : snow).position.set(cx, 0, cz);
@@ -767,6 +833,256 @@ function frame() {
 }
 
 // =====================================================================
+//  Efectos nuevos: partículas, mutaciones, sonido, eventos, rayos, panel admin
+// =====================================================================
+const _tc = new THREE.Color();
+const fmtMult = (n) => (n >= 100 ? Math.round(n) : Math.round(n * 10) / 10);
+const pulseGroups = new Set(); const mutEmit = new Map();
+function dropView(pv, v) {
+  pv.plants.remove(v.group); rainbowGroups.delete(v.group); pulseGroups.delete(v.group);
+  if (v.group.userData.badge) disposeLabel(v.group.userData.badge);
+}
+const mmss = (s) => { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+
+// ---------- Chispas: un solo Points para miles de partículas ----------
+const SPN = 700;
+const spGeo = new THREE.BufferGeometry(); const spPos = new Float32Array(SPN * 3), spCol = new Float32Array(SPN * 3);
+spGeo.setAttribute('position', new THREE.BufferAttribute(spPos, 3)); spGeo.setAttribute('color', new THREE.BufferAttribute(spCol, 3));
+const spTex = canvasTex(64, (g, s) => { const gr = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, s, s); });
+const sparkPts = new THREE.Points(spGeo, new THREE.PointsMaterial({ size: 0.5, map: spTex, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+sparkPts.frustumCulled = false; scene.add(sparkPts);
+const sps = []; for (let i = 0; i < SPN; i++) { sps.push({ life: 0, max: 1, vx: 0, vy: 0, vz: 0, g: 0, cr: 0, cg: 0, cb: 0 }); spPos[i * 3 + 1] = -999; }
+let spI = 0;
+function spark(x, y, z, color, vx, vy, vz, life, g = 0) {
+  const i = spI; spI = (spI + 1) % SPN; const s = sps[i]; _tc.set(color);
+  s.life = s.max = life; s.vx = vx; s.vy = vy; s.vz = vz; s.g = g; s.cr = _tc.r; s.cg = _tc.g; s.cb = _tc.b;
+  spPos[i * 3] = x; spPos[i * 3 + 1] = y; spPos[i * 3 + 2] = z;
+}
+function updateSparks(dt) {
+  for (let i = 0; i < SPN; i++) {
+    const s = sps[i]; if (s.life <= 0) continue; s.life -= dt;
+    if (s.life <= 0) { spPos[i * 3 + 1] = -999; spCol[i * 3] = spCol[i * 3 + 1] = spCol[i * 3 + 2] = 0; continue; }
+    s.vy -= s.g * dt; spPos[i * 3] += s.vx * dt; spPos[i * 3 + 1] += s.vy * dt; spPos[i * 3 + 2] += s.vz * dt;
+    const k = Math.min(1, s.life / s.max * 1.6); spCol[i * 3] = s.cr * k; spCol[i * 3 + 1] = s.cg * k; spCol[i * 3 + 2] = s.cb * k;
+  }
+  spGeo.attributes.position.needsUpdate = true; spGeo.attributes.color.needsUpdate = true;
+}
+const R = (a = 1) => (Math.random() - 0.5) * a;
+const MUT_RATE = { wet: 5, chilled: 4, frozen: 6, shocked: 9, gold: 6, rainbow: 9, choco: 4 };
+function updateEmitters(dt, t, camPos) {
+  for (const e of mutEmit.values()) {
+    if (Math.hypot(e.x - camPos.x, e.z - camPos.z) > 50) continue;
+    for (const m of e.m) {
+      if (Math.random() > dt * (MUT_RATE[m] || 3)) continue;
+      const x = e.x + R(1.1), z = e.z + R(1.1);
+      switch (m) {
+        case 'wet': spark(x, e.y + 1.4, z, '#58b4ff', 0, -1.5, 0, 0.9, 2); break;
+        case 'chilled': spark(x, e.y + 1.5, z, '#c4f1ff', R(0.5), -0.8, R(0.5), 1.4, 0); break;
+        case 'frozen': spark(x, e.y + 0.4 + Math.random(), z, '#ffffff', R(0.3), 0.3, R(0.3), 1.1, 0); spark(x, e.y + 1.4, z, '#8fe3ff', 0, -1, 0, 1, 0); break;
+        case 'shocked': spark(e.x + R(0.6), e.y + Math.random() * 1.6, e.z + R(0.6), '#fff25a', R(5), R(5), R(5), 0.22, 0); break;
+        case 'gold': spark(x, e.y, z, '#ffd23a', 0, 1.4, 0, 1.3, 0); break;
+        case 'rainbow': _tc.setHSL((t * 0.7 + Math.random() * 0.3) % 1, 1, 0.6); spark(e.x + Math.sin(t * 4) * 0.5, e.y + 0.2, e.z + Math.cos(t * 4) * 0.5, _tc.getHex(), R(0.6), 1.6, R(0.6), 1.2, 0); break;
+        case 'choco': spark(x, e.y + 1.3, z, '#9a5a22', 0, -1.4, 0, 0.9, 3); break;
+      }
+    }
+  }
+  pulseGroups.forEach((g) => { const v = 0.45 + 0.3 * Math.sin(t * 3 + g.id); g.traverse((m) => { if (m.isMesh && m.material) [].concat(m.material).forEach((mt) => { if (mt.emissive) mt.emissiveIntensity = v; }); }); });
+}
+
+// ---------- Sonido (sintetizado, sin archivos) ----------
+const sfx = (() => {
+  let ctx = null, master = null, amb = null, ambGain = null, noiseBuf = null, ambKind = null;
+  let vol = parseFloat(store.get('jardin_vol', '0.7')); if (!isFinite(vol)) vol = 0.7;
+  let muted = store.get('jardin_mute', '0') === '1';
+  const level = () => (muted ? 0 : vol);
+  function init() {
+    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      ctx = new AC(); master = ctx.createGain(); master.gain.value = level(); master.connect(ctx.destination);
+      noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      ambGain = ctx.createGain(); ambGain.gain.value = 0; ambGain.connect(master); ambient(ambKind);
+    } catch (e) { ctx = null; }
+  }
+  function tone(f, dur, type = 'sine', v = 0.2, slide = 0, delay = 0) {
+    if (!ctx || !level()) return; const t = ctx.currentTime + delay; const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
+  }
+  function noise(dur, freq, v, type = 'lowpass', delay = 0) {
+    if (!ctx || !level()) return; const t = ctx.currentTime + delay; const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+    const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; const g = ctx.createGain();
+    g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t + dur + 0.05);
+  }
+  function ambient(kind) {
+    ambKind = kind; if (!ctx) return; if (amb) { try { amb.stop(); } catch {} amb = null; }
+    const cfg = { rain: [3200, 'bandpass', 0.5], thunder: [2400, 'bandpass', 0.6], frost: [450, 'lowpass', 0.45] }[kind];
+    if (cfg) { amb = ctx.createBufferSource(); amb.buffer = noiseBuf; amb.loop = true; const f = ctx.createBiquadFilter(); f.type = cfg[1]; f.frequency.value = cfg[0]; amb.connect(f); f.connect(ambGain); amb.start(); ambGain.gain.setTargetAtTime(cfg[2], ctx.currentTime, 0.8); }
+    else ambGain.gain.setTargetAtTime(0, ctx.currentTime, 0.8);
+  }
+  return {
+    init, ambient, tone, noise,
+    get muted() { return muted; }, get vol() { return vol; },
+    setVol(v) { vol = v; store.set('jardin_vol', String(v)); if (master) master.gain.value = level(); },
+    toggleMute() { muted = !muted; store.set('jardin_mute', muted ? '1' : '0'); if (master) master.gain.value = level(); return muted; },
+    pop() { tone(520, 0.12, 'triangle', 0.25, 300); }, click() { tone(700, 0.04, 'square', 0.05); },
+    coin() { tone(988, 0.08, 'square', 0.09); tone(1319, 0.22, 'square', 0.09, 0, 0.07); },
+    buy() { tone(660, 0.08, 'square', 0.09); tone(880, 0.12, 'square', 0.09, 0, 0.08); },
+    hatch() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.25, 'triangle', 0.2, 0, i * 0.1)); },
+    chime() { [784, 988, 1175].forEach((f, i) => tone(f, 0.4, 'sine', 0.18, 0, i * 0.12)); },
+    horn() { tone(220, 0.55, 'sawtooth', 0.14, 40); tone(330, 0.55, 'sawtooth', 0.11, 60, 0.05); },
+    thunder() { noise(2, 180, 0.9, 'lowpass', 0.25); tone(55, 1.3, 'sine', 0.4, -20, 0.25); },
+    zap() { noise(0.2, 3500, 0.3, 'highpass'); tone(1400, 0.16, 'sawtooth', 0.08, -900); },
+    water() { noise(0.18, 1800, 0.1, 'bandpass'); },
+    chirp() { const f = 2400 + Math.random() * 900; tone(f, 0.09, 'sine', 0.07, 500); tone(f + 300, 0.09, 'sine', 0.07, 400, 0.12); },
+  };
+})();
+['pointerdown', 'keydown', 'touchstart'].forEach((e) => addEventListener(e, () => sfx.init(), { passive: true }));
+$('pMute').onclick = () => { const m = sfx.toggleMute(); $('pMute').textContent = m ? '🔇 Sonido: no' : '🔊 Sonido: sí'; };
+$('pVol').value = Math.round(sfx.vol * 100); $('pVol').oninput = (e) => sfx.setVol(e.target.value / 100);
+$('pMute').textContent = sfx.muted ? '🔇 Sonido: no' : '🔊 Sonido: sí';
+
+// ---------- Rayos de tormenta ----------
+const bolts = [];
+function strike() {
+  const cx = camera.position.x + R(90), cz = camera.position.z + R(90); const pts = []; let x = cx, z = cz;
+  for (let y = 60; y >= 0; y -= 6) { pts.push(new THREE.Vector3(x, y, z)); x += R(7); z += R(7); }
+  const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xf4f8ff, fog: false }));
+  scene.add(l); bolts.push({ l, t: 0 }); puff(cx, 1, cz, 0xffffcc, 6); sfx.thunder();
+}
+function updateBolts(dt) { for (let i = bolts.length - 1; i >= 0; i--) { const b = bolts[i]; b.t += dt; if (b.t > 0.22) { scene.remove(b.l); b.l.geometry.dispose(); b.l.material.dispose(); bolts.splice(i, 1); } } }
+
+// ---------- Eventos globales ----------
+let ev = { k: null, until: 0 };
+const emojiTexCache = {};
+function emojiTex(e) {
+  if (!emojiTexCache[e]) emojiTexCache[e] = canvasTex(64, (g, s) => { g.font = '46px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(e, s / 2, s / 2 + 3); });
+  return emojiTexCache[e];
+}
+const EVN = 260; const evGeo = new THREE.BufferGeometry(); const evArr = new Float32Array(EVN * 3);
+for (let i = 0; i < EVN; i++) evArr.set([R(70), Math.random() * 32, R(70)], i * 3);
+evGeo.setAttribute('position', new THREE.BufferAttribute(evArr, 3));
+const evPts = new THREE.Points(evGeo, new THREE.PointsMaterial({ size: 1.5, map: emojiTex('💰'), transparent: true, alphaTest: 0.1, depthWrite: false, fog: false }));
+evPts.visible = false; evPts.frustumCulled = false; scene.add(evPts);
+const EV_FX = { rainbowgarden: { e: '✨', speed: -1.2, size: 1.2 }, sheckle_rain: { e: '💰', speed: 7, size: 1.6 }, chocolate_rain: { e: '🍫', speed: 6, size: 1.6 }, harvest_fest: { e: '🍂', speed: 2.5, size: 1.5 } };
+const EV_LOOK = {
+  rainbowgarden: { sky: 0xb8e8ff, hemi: 1.1, sun: 1.9, sunC: 0xfff0f8 }, sheckle_rain: { sky: 0xffe9a0, hemi: 1.05, sun: 1.9, sunC: 0xffe08a },
+  chocolate_rain: { sky: 0xb98a62, hemi: 0.8, sun: 1.2, sunC: 0xffd2a0 }, laser_storm: { sky: 0x1a1038, hemi: 0.5, sun: 0.5, sunC: 0xb080ff, fogN: 25, fogF: 160 },
+  harvest_fest: { sky: 0xffc98a, hemi: 1.0, sun: 1.7, sunC: 0xffc070 },
+};
+const evLook = () => (ev.k && EV_LOOK[ev.k]) || {};
+function applyEventFx() {
+  const f = ev.k && EV_FX[ev.k]; evPts.visible = !!f;
+  if (f) { evPts.material.map = emojiTex(f.e); evPts.material.size = f.size; evPts.material.needsUpdate = true; }
+  rainbowArc.visible = weather.k === 'rainbow' || ev.k === 'rainbowgarden';
+}
+function showBanner(k, quiet) {
+  const e = EVENTS[k]; const b = $('banner'); b.style.background = `linear-gradient(${e.color},#222c)`;
+  b.querySelector('b').textContent = `${e.emoji} ¡${e.name}!`; b.querySelector('span').textContent = e.desc;
+  b.classList.add('show'); clearTimeout(showBanner.t); showBanner.t = setTimeout(() => b.classList.remove('show'), quiet ? 3500 : 7000);
+}
+function setEvent(m) {
+  if (m.k) {
+    ev = { k: m.k, until: m.until }; showBanner(m.k); sfx.horn(); sfx.chime();
+    toast(`${EVENTS[m.k].emoji} ¡Evento: ${EVENTS[m.k].name}!` + (m.by ? ' (activado por ' + m.by + ')' : ''), 'gold'); chatLine('🎉', 'Evento: ' + EVENTS[m.k].name);
+  } else { ev = { k: null, until: 0 }; if (m.ended && EVENTS[m.ended]) { toast('🎉 Terminó: ' + EVENTS[m.ended].name); chatLine('🎉', 'Terminó ' + EVENTS[m.ended].name); } }
+  applyEventFx();
+}
+function showEventEnd(m) {
+  const r = m.reward || {}, parts = [];
+  if (r.sheckles) parts.push('💰' + fmt(r.sheckles));
+  for (const k in r.seeds || {}) parts.push(r.seeds[k] + '× ' + CROPS[k].name);
+  for (const k in r.eggs || {}) parts.push(r.eggs[k] + '× ' + EGGS[k].name);
+  for (const k in r.gear || {}) parts.push(r.gear[k] + '× ' + GEAR[k].name);
+  toast('🎁 Premio del evento: ' + parts.join(' · '), 'gold'); sfx.chime(); if (self) puff(self.root.position.x, 2.5, self.root.position.z, 0xffd23a, 16);
+}
+let laserT = 0, sparkleT = 0;
+const beamGeo = new THREE.CylinderGeometry(0.12, 0.12, 50, 6);
+const LASER_COLS = [0x2ad4ff, 0xff3dd0, 0x7dff3d, 0xffe83d];
+const beams = [];
+function updateEventFx(dt, t, camPos) {
+  if (evPts.visible) {
+    const f = EV_FX[ev.k]; evPts.position.set(camPos.x, 0, camPos.z);
+    for (let i = 0; i < EVN; i++) { evArr[i * 3 + 1] -= f.speed * dt; evArr[i * 3] += Math.sin(t * 0.7 + i) * dt * 0.8; if (f.speed > 0 ? evArr[i * 3 + 1] < 0 : evArr[i * 3 + 1] > 32) evArr[i * 3 + 1] = f.speed > 0 ? 32 : 0; }
+    evGeo.attributes.position.needsUpdate = true;
+  }
+  if (ev.k === 'laser_storm') {
+    laserT -= dt;
+    if (laserT <= 0) {
+      laserT = 0.25 + Math.random() * 0.4; const a = Math.random() * 6.28, r = Math.random() * 70; const x = Math.sin(a) * r, z = Math.cos(a) * r; const c = LASER_COLS[Math.floor(Math.random() * 4)];
+      const m = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      m.position.set(x, 25, z); m.rotation.z = R(0.5); scene.add(m); beams.push({ m, t: 0 }); puff(x, 0.5, z, c, 7); sfx.zap();
+    }
+  }
+  for (let i = beams.length - 1; i >= 0; i--) { const b = beams[i]; b.t += dt; b.m.material.opacity = Math.max(0, 1 - b.t / 0.35); if (b.t > 0.35) { scene.remove(b.m); b.m.material.dispose(); beams.splice(i, 1); } }
+  // motitas de luz en clima lindo
+  const wk = weather.k;
+  if (wk === 'sunny' || wk === 'rainbow' || ev.k === 'rainbowgarden') {
+    sparkleT += dt; if (sparkleT > 0.06) { sparkleT = 0; _tc.setHSL((t * 0.2 + Math.random() * 0.2) % 1, wk === 'sunny' ? 0.2 : 1, 0.7); spark(camPos.x + R(36), 0.5 + Math.random() * 7, camPos.z + R(36), wk === 'sunny' ? '#fff3a0' : _tc.getHex(), R(0.8), 0.4, R(0.8), 2.5, 0); }
+  }
+}
+
+// ---------- Info de la interfaz ----------
+function hudTick() {
+  const wk = weather.k;
+  $('wx').textContent = wk ? `${WEATHER[wk].emoji} ${WEATHER[wk].name} · ${mmss(weather.until - srvNow())}` : '☀️ Despejado';
+  $('rs').textContent = '🛒 Reposición ' + mmss(stock.next - srvNow());
+  const evEl = $('ev');
+  if (ev.k) { evEl.classList.remove('hidden'); evEl.textContent = `${EVENTS[ev.k].emoji} ${EVENTS[ev.k].name} · ${mmss(ev.until - srvNow())}`; } else evEl.classList.add('hidden');
+  const d = plotData[myPlot]; let n = 0, ready = 0; if (d) for (const p of d.values()) { n++; if (p.r && !p.k.startsWith('egg:')) ready++; }
+  $('plotchip').textContent = `🌾 Parcela ${n}/${GRID * GRID}` + (ready ? ` · 🧺 ${ready} listas` : '');
+  updateShopSub();
+  if ((wk === 'sunny' || wk === 'rainbow') && Math.random() < 0.25) sfx.chirp();
+}
+
+// ---------- Panel de administración (el servidor valida cada comando) ----------
+let admBuilt = false, admKey = '';
+const ADM_ITEMS = { seed: CROPS, egg: EGGS, gear: GEAR, pet: PETS };
+function buildAdmin() {
+  if (admBuilt) return; admBuilt = true;
+  const wBtns = Object.keys(WEATHER).map((k) => `<button class="btn alt sm" data-w="${k}">${WEATHER[k].emoji} ${WEATHER[k].name}</button>`).join('') + '<button class="btn sm" data-w="">☀️ Despejar</button>';
+  const eBtns = Object.keys(EVENTS).map((k) => `<button class="btn alt sm" data-e="${k}">${EVENTS[k].emoji} ${EVENTS[k].name}</button>`).join('') + '<button class="btn red sm" data-adm="stopEvent">⏹ Detener evento</button>';
+  $('admBody').innerHTML = `<div class="sec">🖥️ Servidor</div><div id="admInfo" style="font-size:13px;line-height:1.5"></div>
+    <div class="grid" style="margin-top:6px"><button class="btn sm" data-adm="restock">🛒 Reponer tiendas ya</button></div>
+    <div class="sec">🌦️ Clima</div><div class="grid">${wBtns}</div>
+    <div class="sec">🎉 Eventos</div><div class="grid">${eBtns}</div>
+    <div class="sec">🎁 Dar recompensas</div>
+    <div class="admrow"><select id="gTarget"></select><select id="gWhat"><option value="money">💰 Sheckles</option><option value="seed">🌱 Semilla</option><option value="egg">🥚 Huevo</option><option value="gear">🔧 Equipo</option><option value="pet">🐾 Mascota</option></select></div>
+    <div class="admrow"><select id="gItem" class="hidden"></select><input id="gQty" type="number" value="1000" min="1"><button class="btn sm" id="gGo">Dar</button></div>
+    <div class="sec">👥 Jugadores y parcelas</div><div id="admPlayers"></div>`;
+  const fillItems = () => { const w = $('gWhat').value, it = $('gItem'); if (w === 'money') { it.classList.add('hidden'); return; } it.classList.remove('hidden'); it.innerHTML = Object.entries(ADM_ITEMS[w]).map(([k, d]) => `<option value="${k}">${d.emoji} ${d.name}</option>`).join(''); };
+  $('gWhat').onchange = fillItems; fillItems();
+  $('gGo').onclick = () => { const what = $('gWhat').value; net.send({ t: 'adm', cmd: 'give', target: $('gTarget').value === 'all' ? 'all' : +$('gTarget').value, what, k: what === 'money' ? null : $('gItem').value, qty: +$('gQty').value || 1 }); toast('🎁 Enviado', 'good'); };
+  $('admBody').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.w !== undefined) net.send({ t: 'adm', cmd: 'weather', k: b.dataset.w || null });
+    else if (b.dataset.e) net.send({ t: 'adm', cmd: 'event', k: b.dataset.e });
+    else if (b.dataset.adm) net.send({ t: 'adm', cmd: b.dataset.adm });
+    else if (b.dataset.kick) net.send({ t: 'adm', cmd: 'kick', target: +b.dataset.kick });
+    else if (b.dataset.give) net.send({ t: 'adm', cmd: 'give', target: +b.dataset.give, what: 'money', qty: 1000 });
+  });
+}
+function openAdmin() { if (!isOwner) return; buildAdmin(); openModal('admin'); net.send({ t: 'adm', cmd: 'state' }); }
+setInterval(() => { if (isOwner && inGame && !$('admin').classList.contains('hidden')) net.send({ t: 'adm', cmd: 'state' }); }, 3000);
+function renderAdmin(st) {
+  if (!admBuilt || !st) return;
+  const upt = st.uptime ? Math.floor(st.uptime / 3600) + 'h ' + Math.floor(st.uptime % 3600 / 60) + 'm' : '–';
+  $('admInfo').innerHTML = `Jugadores: <b>${st.players.length}/${st.max}</b> · Cuentas: <b>${st.accounts ?? '?'}</b> · Encendido: <b>${upt}</b><br>
+    Clima: <b>${st.weather.k ? WEATHER[st.weather.k].emoji + ' ' + WEATHER[st.weather.k].name + ' (' + mmss(st.weather.until - st.now) + ')' : 'despejado'}</b><br>
+    Evento: <b>${st.event.k ? EVENTS[st.event.k].emoji + ' ' + EVENTS[st.event.k].name + ' (' + mmss(st.event.until - st.now) + ')' : 'ninguno'}</b> · próximo automático en ${mmss(st.nextEvent - st.now)}<br>
+    Reposición de tiendas en <b>${mmss(st.nextRestock - st.now)}</b> · Owners: ${(st.owners || []).join(', ') || '–'}`;
+  const key = st.players.map((p) => p.id + p.name).join('|');
+  if (key !== admKey) { admKey = key; const cur = $('gTarget').value; $('gTarget').innerHTML = '<option value="all">👥 Todos</option>' + st.players.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join(''); if ([...$('gTarget').options].some((o) => o.value === cur)) $('gTarget').value = cur; }
+  $('admPlayers').innerHTML = st.players.map((p) => {
+    const crops = Object.entries(p.crops).map(([k, n]) => CROPS[k].emoji + n).join(' ') || '—';
+    return `<div class="item"><div class="e">${p.owner ? '👑' : '🧑‍🌾'}</div><div class="t"><b>${esc(p.name)}</b> <small>Parcela ${p.plot + 1} · 💰${fmt(p.sh)} · 🐾${p.pets} · 🧺${p.fruits}</small><small>🌱 ${p.plants} plantas (${p.ready} listas, ${p.mut} mutadas, ${p.eggs} huevos): ${crops}</small></div><div style="display:flex;flex-direction:column;gap:4px"><button class="btn sm" data-give="${p.id}">+💰1000</button>${p.owner ? '' : `<button class="btn red sm" data-kick="${p.id}">Expulsar</button>`}</div></div>`;
+  }).join('');
+}
+$('bAdmin').onclick = openAdmin;
+$('bPets').onclick = () => { bagTab = 'pets'; openModal('bag'); };
+
+// =====================================================================
 //  Arranque
 // =====================================================================
 (async function boot() {
@@ -775,7 +1091,7 @@ function frame() {
   catch (e) { console.warn(e); txt.textContent = 'No se encontró models.pack: se usarán formas simples.'; await new Promise((r) => setTimeout(r, 1200)); }
   buildCropProtos(); buildDecor(); buildNPCs();
   $('loading').classList.add('hidden'); $('menu').classList.remove('hidden');
-  if (!serverUrl()) $('menuStatus').textContent = 'Sitio sin servidor multijugador: usá "Sin conexión" o configurá config.js';
+  if (!serverUrl()) $('menuStatus').textContent = 'Este sitio no tiene servidor multijugador: configurá config.js (ver README)';
   frame();
 })();
 window.__game = { scene, camera, players, plotData, get me() { return me; }, get weather() { return weather; } };

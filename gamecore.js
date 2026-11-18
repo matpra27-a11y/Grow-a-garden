@@ -4,11 +4,11 @@
 //  servidor decide plantas, dinero, tiendas, clima, etc.
 // =====================================================================
 
-export const MAX_PLAYERS = 32;          // cantidad de parcelas = jugadores máximos
+export const MAX_PLAYERS = 4;           // jugadores reales máximos = cantidad de parcelas
 export const CELL = 2;                  // tamaño de una celda de siembra (m)
 export const GRID = 8;                  // 8x8 celdas por parcela
 export const PLOT_SIZE = CELL * GRID;   // 16 m
-export const WORLD_RADIUS = 125;
+export const WORLD_RADIUS = 95;
 export const GROW_SPEED = +(globalThis.process && globalThis.process.env && globalThis.process.env.GROW_SPEED) || 1; // 1 = normal (en el servidor: GROW_SPEED=10 para probar)
 
 // ---------- Cultivos ----------
@@ -35,7 +35,10 @@ export const MUTS = {
   shocked: { name: 'Electrizada', mult: 100, color: '#ffe44a' },
   gold:    { name: 'Dorada',   mult: 20,  color: '#ffd23a' },
   rainbow: { name: 'Arcoíris', mult: 50,  color: '#ff6ad5' },
+  choco:   { name: 'Chocolate', mult: 15, color: '#7b3f00' },
 };
+export const MUT_EMOJI = { wet: '💧', chilled: '❄️', frozen: '🧊', shocked: '⚡', gold: '🪙', rainbow: '🌈', choco: '🍫' };
+export function mutMult(ms) { let m = 1; for (const k of ms) m += MUTS[k].mult - 1; return m; }
 
 // ---------- Clima (global para todo el servidor) ----------
 export const WEATHER = {
@@ -47,10 +50,33 @@ export const WEATHER = {
 };
 export const WEATHER_EVERY = [100, 200]; // seg entre eventos (aleatorio)
 
+// ---------- Eventos globales ----------
+export const EVENTS = {
+  rainbowgarden: { name: 'Jardín Arcoíris', emoji: '🌈', dur: 120, grow: 1.5, muts: { rainbow: 0.006, gold: 0.01 }, color: '#ff6ad5', desc: 'Más mutaciones Arcoíris y Doradas · crecimiento +50%', reward: { sheckles: 400 } },
+  sheckle_rain:  { name: 'Lluvia de Sheckles', emoji: '💰', dur: 90, grow: 1, muts: {}, tick: { every: 10, sheckles: 40 }, color: '#ffc928', desc: '¡Llueven Sheckles! Ganás plata cada 10 segundos', reward: { sheckles: 300 } },
+  chocolate_rain: { name: 'Lluvia de Chocolate', emoji: '🍫', dur: 90, grow: 1.2, muts: { choco: 0.03 }, color: '#8a4a12', desc: 'Mutación Chocolate x15 · crecimiento +20%', reward: { eggs: { common: 1 } } },
+  laser_storm:   { name: 'Tormenta Láser', emoji: '⚡', dur: 75, grow: 1, muts: { shocked: 0.004, gold: 0.006 }, color: '#2ad4ff', desc: 'Rayos láser: Electrizada x100 y Dorada x20', reward: { sheckles: 600 } },
+  harvest_fest:  { name: 'Fiesta de la Cosecha', emoji: '🎃', dur: 120, grow: 1.1, muts: {}, sellBonus: 0.5, color: '#ff8a1f', desc: 'Vendés todo +50% · evento de temporada', reward: { seeds: { pumpkin: 1 }, sheckles: 200 } },
+};
+export const EVENT_EVERY = [420, 780]; // seg entre eventos automáticos
+
+// ---------- Rarezas ----------
+export const RARITY = {
+  common: { name: 'Común', color: '#8d8d8d' }, uncommon: { name: 'Poco común', color: '#37a237' }, rare: { name: 'Raro', color: '#2f7fe0' },
+  legendary: { name: 'Legendario', color: '#e09a00' }, mythic: { name: 'Mítico', color: '#c23ae0' },
+};
+export const RAR = {
+  crop: { carrot: 'common', strawberry: 'common', blueberry: 'uncommon', tomato: 'uncommon', corn: 'rare', sunflower: 'rare', watermelon: 'legendary', pumpkin: 'legendary', apple: 'mythic' },
+  pet: { hen: 'common', duck: 'common', sheep: 'uncommon', pig: 'uncommon', cow: 'rare', sheepdog: 'rare', horse: 'legendary' },
+  egg: { common: 'common', rare: 'rare', mythic: 'mythic' },
+  gear: { sprinkler: 'uncommon', fertilizer: 'rare', goldspray: 'legendary' },
+};
+
 // ---------- Huevos y mascotas ----------
 export const EGGS = {
   common: { name: 'Huevo común', emoji: '🥚', price: 150, hatch: 45, pets: { hen: 40, duck: 30, sheep: 18, pig: 12 }, chance: 1.0, stock: [2, 4] },
   rare:   { name: 'Huevo raro',  emoji: '🥚', price: 1500, hatch: 90, pets: { sheep: 30, pig: 30, cow: 25, horse: 8, sheepdog: 7 }, chance: 0.35, stock: [1, 2] },
+  mythic: { name: 'Huevo mítico', emoji: '🥚', price: 12000, hatch: 150, pets: { horse: 50, sheepdog: 30, cow: 20 }, chance: 0.08, stock: [1, 1] },
 };
 export const PETS = {
   hen:      { name: 'Gallina',  emoji: '🐔', sell: 0.03 },
@@ -65,19 +91,24 @@ export const MAX_EQUIPPED = 3;
 
 // ---------- Equipo ----------
 export const GEAR = {
-  sprinkler: { name: 'Aspersor', emoji: '💦', price: 350, chance: 1.0, stock: [2, 4], desc: 'Acelera x1.6 las plantas cercanas por 3 min', radius: 5, dur: 180, boost: 1.6 },
+  sprinkler:  { name: 'Aspersor', emoji: '💦', price: 350, chance: 1.0, stock: [2, 4], desc: 'Acelera x1.6 las plantas cercanas por 3 min', radius: 5, dur: 180, boost: 1.6 },
+  fertilizer: { name: 'Fertilizante', emoji: '🧪', price: 900, chance: 0.4, stock: [1, 3], desc: 'Hace madurar una planta o un huevo al instante' },
+  goldspray:  { name: 'Rocío dorado', emoji: '✨', price: 6000, chance: 0.1, stock: [1, 1], desc: 'Agrega la mutación Dorada (x20) a una planta' },
 };
+export function priceOf(shop, k, deal) {
+  const d = shop === 'seed' ? CROPS[k] : shop === 'gear' ? GEAR[k] : EGGS[k]; if (!d) return 0;
+  let p = shop === 'seed' ? d.seed : d.price;
+  if (deal && deal.shop === shop && deal.k === k) p = Math.round(p * 0.7);
+  return p;
+}
 
 // ---------- Mapa: parcelas en dos anillos alrededor del centro ----------
-const RING1 = { n: 12, r: 46 }, RING2 = { n: 20, r: 74 };
+// 4 parcelas en las diagonales alrededor de la plaza central
 export function plotInfo(i) {
-  const ring = i < RING1.n ? RING1 : RING2;
-  const k = i < RING1.n ? i : i - RING1.n;
-  const a = (k / ring.n) * Math.PI * 2 + (i < RING1.n ? 0 : Math.PI / ring.n);
-  const x = Math.cos(a) * ring.r, z = Math.sin(a) * ring.r;
+  const a = Math.PI / 4 + (i % 4) * Math.PI / 2;
+  const x = Math.cos(a) * 44, z = Math.sin(a) * 44;
   // rot: ángulo Y para que el "frente" de la parcela mire al centro
-  const rot = Math.atan2(-x, -z);
-  return { x, z, rot };
+  return { x, z, rot: Math.atan2(-x, -z) };
 }
 // Posición mundial del centro de la celda c (0..63) en la parcela i
 export function cellWorld(i, c) {
@@ -124,7 +155,7 @@ export function fruitValue(f) {
   const c = CROPS[f.k];
   const avg = (c.w[0] + c.w[1]) / 2;
   const sizeF = Math.min(4, Math.max(0.3, Math.pow(f.w / avg, 1.5)));
-  let m = 1; for (const k of f.m) m += MUTS[k].mult - 1;
+  const m = mutMult(f.m);
   return Math.max(1, Math.round(c.sell * sizeF * m));
 }
 const clampName = (s) => String(s || 'Granjero').replace(/[^\p{L}\p{N} _.\-]/gu, '').trim().slice(0, 14) || 'Granjero';
@@ -140,6 +171,9 @@ export class World {
     this.send = opts.send || (() => {});
     this.broadcast = opts.broadcast || (() => {});
     this.rng = opts.rng || Math.random;
+    this.kick = opts.kick || (() => {});
+    this.extra = opts.extra || (() => ({}));
+    this.event = null;
     this.players = new Map();       // id -> player
     this.profiles = new Map();      // uid -> perfil guardado
     this.plots = new Array(MAX_PLAYERS).fill(null); // plotIndex -> playerId
@@ -150,6 +184,7 @@ export class World {
     this.restockEvery = 300;
     this.weather = null;            // {k, until}
     this.nextWeather = rr(this.rng, 40, 80);
+    this.nextEvent = rr(this.rng, 240, 420);
     this.lbTimer = 0;
     this.restock();
   }
@@ -171,13 +206,13 @@ export class World {
     const name = clampName(info.name);
     let prof = this.profiles.get(uid);
     if (!prof) { prof = this.newProfile(name); this.profiles.set(uid, prof); }
-    prof.name = name;
+    prof.name = name; if (info.avatar) prof.avatar = String(info.avatar).slice(0, 20);
     // crecimiento offline (máx 1 hora)
     const away = Math.min(3600, Math.max(0, (Date.now() - (prof.lastSeen || Date.now())) / 1000));
     if (away > 5) for (const pl of prof.plants) this.growPlant(pl, away, 1);
     const spawn = plotInfo(plot);
     const pl = {
-      id, uid, plot, prof, name, avatar: String(info.avatar || 'farmer'),
+      id, uid, plot, prof, name, avatar: String(info.avatar || prof.avatar || 'farmer'), owner: !!info.owner,
       x: SPAWN.x + (this.rng() - 0.5) * 6, z: SPAWN.z + (this.rng() - 0.5) * 6, ry: 0, mv: 0,
       lastWater: 0, lastChat: 0, joinedAt: this.time,
     };
@@ -188,7 +223,7 @@ export class World {
     this.send(id, {
       t: 'welcome', id, plot, now: this.time, me: this.me(pl),
       players: [...this.players.values()].map((q) => this.pub(q)),
-      plots: this.allPlots(), stock: this.stockMsg(), weather: this.weatherMsg(),
+      plots: this.allPlots(), stock: this.stockMsg(), weather: this.weatherMsg(), owner: pl.owner, event: this.eventMsg(), max: MAX_PLAYERS,
     });
     return { id };
   }
@@ -199,7 +234,7 @@ export class World {
     this.players.delete(id);
     this.broadcast({ t: 'pl', id, plot: pl.plot });
   }
-  pub(p) { return { id: p.id, name: p.name, avatar: p.avatar, plot: p.plot, x: p.x, z: p.z, ry: p.ry, sh: p.prof.sheckles, pets: p.prof.equipped.map((i) => p.prof.pets[i]) }; }
+  pub(p) { return { id: p.id, name: p.name, avatar: p.avatar, owner: !!p.owner, plot: p.plot, x: p.x, z: p.z, ry: p.ry, sh: p.prof.sheckles, pets: p.prof.equipped.map((i) => p.prof.pets[i]) }; }
   me(p) {
     const f = p.prof;
     return { name: p.name, sheckles: f.sheckles, seeds: f.seeds, eggs: f.eggs, gear: f.gear, fruits: f.fruits, pets: f.pets, equipped: f.equipped, stats: f.stats };
@@ -223,9 +258,13 @@ export class World {
     this.stock.gear = g;
     const e = {}; for (const k in EGGS) if (r() < EGGS[k].chance) e[k] = ri(r, EGGS[k].stock[0], EGGS[k].stock[1]);
     this.stock.egg = e;
+    const cand = [];
+    for (const k in s) if (k !== 'carrot' && k !== 'strawberry') cand.push({ shop: 'seed', k });
+    for (const k in g) cand.push({ shop: 'gear', k }); for (const k in e) if (k !== 'common') cand.push({ shop: 'egg', k });
+    this.stock.deal = cand.length ? cand[Math.floor(r() * cand.length)] : null; // oferta especial -30%
     this.nextRestock = this.time + this.restockEvery;
   }
-  stockMsg() { return { seed: this.stock.seed, gear: this.stock.gear, egg: this.stock.egg, next: this.nextRestock }; }
+  stockMsg() { return { seed: this.stock.seed, gear: this.stock.gear, egg: this.stock.egg, deal: this.stock.deal || null, next: this.nextRestock }; }
   weatherMsg() { return this.weather ? { k: this.weather.k, until: this.weather.until } : { k: null, until: 0 }; }
 
   near(p, shop) {
@@ -236,6 +275,7 @@ export class World {
   // ---------------- Plantas ----------------
   growMult(p, plant) {
     let m = this.weather ? WEATHER[this.weather.k].grow : 1;
+    if (this.event) m *= EVENTS[this.event.k].grow || 1;
     const f = p.prof;
     for (const idx of f.equipped) { const pet = PETS[f.pets[idx]]; if (pet && pet.grow) m += pet.grow; }
     if (p.sprinklers) {
@@ -253,12 +293,11 @@ export class World {
     plant.p += dt * mult;
     if (plant.p >= plant.g) { plant.p = plant.g; plant.ready = true; }
   }
-  rollMutations(plant, w, dt) {
-    const wd = WEATHER[w]; if (!wd) return;
-    for (const m in wd.muts) {
+  rollMutations(plant, muts, dt) {
+    for (const m in muts) {
       if (plant.m.includes(m)) continue;
-      if (plant.m.length >= 3) break;
-      if (this.rng() < wd.muts[m] * dt) {
+      if (plant.m.length >= 4) break;
+      if (this.rng() < muts[m] * dt) {
         if (m === 'frozen') plant.m = plant.m.filter((x) => x !== 'chilled');
         plant.m.push(m);
       }
@@ -274,10 +313,19 @@ export class World {
       this.weather = { k, until: this.time + WEATHER[k].dur };
       this.broadcast({ t: 'weather', ...this.weatherMsg() });
     }
+    // eventos globales
+    if (this.event) {
+      const ev = EVENTS[this.event.k];
+      if (this.time >= this.event.until) this.endEvent(true);
+      else if (ev.tick && this.time >= this.event.nextTick) {
+        this.event.nextTick = this.time + ev.tick.every;
+        this.players.forEach((p) => { this.grant(p, { sheckles: ev.tick.sheckles }); this.sendMe(p); this.send(p.id, { t: 'evtick', amt: ev.tick.sheckles }); });
+      }
+    } else if (this.time >= this.nextEvent && this.players.size) { const ks = Object.keys(EVENTS); this.startEvent(ks[Math.floor(this.rng() * ks.length)]); }
     // restock
     if (this.time >= this.nextRestock) { this.restock(); this.broadcast({ t: 'stock', ...this.stockMsg() }); }
     // plantas
-    const w = this.weather && this.weather.k;
+    const w = this.weather && this.weather.k, ev = this.event && this.event.k;
     this.players.forEach((p) => {
       if (p.sprinklers) p.sprinklers = p.sprinklers.filter((s) => s.until > this.time);
       let changed = false;
@@ -285,8 +333,10 @@ export class World {
         const before = plantStage(pl);
         const wasReady = pl.ready;
         this.growPlant(pl, dt, this.growMult(p, pl));
-        if (w && !pl.k.startsWith('egg:')) {
-          const nm = pl.m.length; this.rollMutations(pl, w, dt); if (pl.m.length !== nm) changed = true;
+        if ((w || ev) && !pl.k.startsWith('egg:')) {
+          const nm = pl.m.length;
+          if (w) this.rollMutations(pl, WEATHER[w].muts, dt); if (ev) this.rollMutations(pl, EVENTS[ev].muts, dt);
+          if (pl.m.length !== nm) changed = true;
         }
         if (plantStage(pl) !== before || wasReady !== pl.ready) changed = true;
       }
@@ -409,7 +459,7 @@ export class World {
         const have = st[m.k] || 0;
         if (have <= 0) return this.toast(p, 'Sin stock. Esperá la reposición', 'bad');
         const n = Math.min(qty, have);
-        const price = (shop === 'seed' ? d.seed : d.price) * n;
+        const price = priceOf(shop, m.k, this.stock.deal) * n;
         if (f.sheckles < price) return this.toast(p, 'No te alcanza el dinero 💸', 'bad');
         f.sheckles -= price; st[m.k] = have - n; if (st[m.k] <= 0) delete st[m.k];
         const inv = shop === 'seed' ? f.seeds : shop === 'gear' ? f.gear : f.eggs;
@@ -424,6 +474,7 @@ export class World {
         else list = f.fruits.map((_, i) => i);
         if (!list.length) return this.toast(p, 'No tenés frutas para vender', 'bad');
         let bonus = 1; for (const idx of f.equipped) { const pet = PETS[f.pets[idx]]; if (pet && pet.sell) bonus += pet.sell; }
+        if (this.event) bonus += EVENTS[this.event.k].sellBonus || 0;
         let total = 0; for (const i of list) total += fruitValue(f.fruits[i]);
         total = Math.round(total * bonus);
         const set = new Set(list); f.fruits = f.fruits.filter((_, i) => !set.has(i));
@@ -431,6 +482,18 @@ export class World {
         this.send(p.id, { t: 'sold', total, n: list.length });
         this.sendMe(p); break;
       }
+      case 'use': { // fertilizante / rocío dorado sobre una planta
+        const k = m.k; if (k !== 'fertilizer' && k !== 'goldspray') return;
+        const pl = f.plants.find((q) => q.c === (m.cell | 0)); if (!pl) return;
+        if (!f.gear[k]) return this.toast(p, 'No tenés ese ítem', 'bad');
+        if (!this.inPlotRange(p, pl.c)) return this.toast(p, 'Acercate más a tu parcela', 'bad');
+        const isEgg = pl.k.startsWith('egg:');
+        if (k === 'fertilizer') { if (isEgg ? pl.p >= pl.g : pl.ready) return this.toast(p, 'Ya está lista', 'bad'); pl.p = pl.g; if (!isEgg) pl.ready = true; }
+        else { if (isEgg || pl.m.includes('gold')) return this.toast(p, 'No se puede usar acá', 'bad'); if (pl.m.length >= 4) pl.m.shift(); pl.m.push('gold'); }
+        f.gear[k]--; if (f.gear[k] <= 0) delete f.gear[k];
+        this.sendPlot(p.plot); this.sendMe(p); this.toast(p, k === 'fertilizer' ? '🧪 ¡Madurado!' : '✨ ¡Mutación Dorada!', 'gold'); break;
+      }
+      case 'adm': return this.admin(p, m);
       case 'chat': {
         const now = this.time; if (now - p.lastChat < 1.2) return; p.lastChat = now;
         const text = String(m.text || '').replace(/[<>]/g, '').trim().slice(0, 100); if (!text) return;
@@ -442,6 +505,68 @@ export class World {
   inPlotRange(p, cell, max) {
     const w = cellWorld(p.plot, cell);
     return Math.hypot(p.x - w.x, p.z - w.z) <= (max || 24);
+  }
+
+  // ---------------- Eventos / clima / administración ----------------
+  eventMsg() { return this.event ? { k: this.event.k, until: this.event.until } : { k: null, until: 0 }; }
+  grant(p, r) {
+    const f = p.prof;
+    if (r.sheckles) { f.sheckles += r.sheckles; f.stats.earned += r.sheckles; }
+    for (const [inv, key] of [['seeds', 'seeds'], ['eggs', 'eggs'], ['gear', 'gear']]) for (const k in r[key] || {}) f[inv][k] = (f[inv][k] || 0) + r[key][k];
+  }
+  startEvent(k, by) {
+    if (!EVENTS[k]) return; if (this.event) this.endEvent(false);
+    const ev = EVENTS[k];
+    this.event = { k, until: this.time + ev.dur, nextTick: this.time + ((ev.tick && ev.tick.every) || 1e9) };
+    this.broadcast({ t: 'event', ...this.eventMsg(), by: by || null });
+  }
+  endEvent(reward) {
+    if (!this.event) return; const k = this.event.k, ev = EVENTS[k]; this.event = null;
+    if (reward && ev.reward) this.players.forEach((p) => { this.grant(p, ev.reward); this.sendMe(p); this.send(p.id, { t: 'evend', k, reward: ev.reward }); });
+    this.broadcast({ t: 'event', k: null, until: 0, ended: k });
+    this.nextEvent = this.time + rr(this.rng, EVENT_EVERY[0], EVENT_EVERY[1]);
+  }
+  setWeather(k) {
+    this.weather = k ? { k, until: this.time + WEATHER[k].dur } : null;
+    this.nextWeather = this.time + (k ? WEATHER[k].dur : 0) + rr(this.rng, WEATHER_EVERY[0], WEATHER_EVERY[1]);
+    this.broadcast({ t: 'weather', ...this.weatherMsg() });
+  }
+  adminState() {
+    const players = [...this.players.values()].map((q) => {
+      const crops = {}; let ready = 0, mut = 0, eggs = 0;
+      for (const x of q.prof.plants) { if (x.k.startsWith('egg:')) { eggs++; continue; } crops[x.k] = (crops[x.k] || 0) + 1; if (x.ready) ready++; if (x.m.length) mut++; }
+      return { id: q.id, name: q.name, owner: !!q.owner, plot: q.plot, sh: q.prof.sheckles, plants: q.prof.plants.length, ready, mut, eggs, crops, pets: q.prof.pets.length, fruits: q.prof.fruits.length, x: Math.round(q.x), z: Math.round(q.z) };
+    });
+    return { players, max: MAX_PLAYERS, weather: this.weatherMsg(), event: this.eventMsg(), nextRestock: this.nextRestock, nextEvent: this.nextEvent, now: this.time, ...this.extra() };
+  }
+  // TODAS las acciones de admin se validan acá, en el servidor: solo si el jugador es owner (según su cuenta).
+  admin(p, m) {
+    if (!p.owner) return this.toast(p, 'No tenés permisos de administrador', 'bad');
+    switch (m.cmd) {
+      case 'weather': this.setWeather(WEATHER[m.k] ? m.k : null); break;
+      case 'event': if (EVENTS[m.k]) this.startEvent(m.k, p.name); break;
+      case 'stopEvent': this.endEvent(false); break;
+      case 'restock': this.restock(); this.broadcast({ t: 'stock', ...this.stockMsg() }); break;
+      case 'kick': { const q = this.players.get(m.target | 0); if (q && !q.owner) this.kick(q.id, 'Fuiste expulsado por el owner'); break; }
+      case 'give': {
+        const targets = m.target === 'all' ? [...this.players.values()] : [this.players.get(m.target | 0)].filter(Boolean);
+        const qty = Math.max(1, Math.min(m.what === 'money' ? 100000000 : 1000, Math.floor(+m.qty) || 1));
+        for (const q of targets) {
+          const f = q.prof;
+          if (m.what === 'money') f.sheckles += qty;
+          else if (m.what === 'seed' && CROPS[m.k]) f.seeds[m.k] = (f.seeds[m.k] || 0) + qty;
+          else if (m.what === 'egg' && EGGS[m.k]) f.eggs[m.k] = (f.eggs[m.k] || 0) + qty;
+          else if (m.what === 'gear' && GEAR[m.k]) f.gear[m.k] = (f.gear[m.k] || 0) + qty;
+          else if (m.what === 'pet' && PETS[m.k]) for (let i = 0; i < Math.min(qty, 20); i++) f.pets.push(m.k);
+          else continue;
+          this.sendMe(q); this.toast(q, '🎁 Recibiste un regalo del owner', 'gold');
+        }
+        console.log('[ADMIN]', p.name, 'give', m.what, m.k || '', qty, '->', m.target); break;
+      }
+      case 'state': break;
+      default: return;
+    }
+    this.send(p.id, { t: 'adm', state: this.adminState() });
   }
 
   // ---------------- Persistencia ----------------
@@ -457,42 +582,3 @@ export class World {
 function pubPlant(p) { return { c: p.c, k: p.k, p: +p.p.toFixed(1), g: p.g, r: p.ready ? 1 : 0, m: p.m, w: p.w }; }
 export function plantStage(p) { return p.ready ? 3 : stageOf(p.p, p.g); }
 function cellWorldLocal(c) { return { x: ((c % GRID) - (GRID - 1) / 2) * CELL, z: (Math.floor(c / GRID) - (GRID - 1) / 2) * CELL }; }
-
-// =====================================================================
-//  Bots (para ver el mundo lleno aunque no haya gente conectada)
-// =====================================================================
-const BOT_NAMES = ['Lucía', 'Tomás', 'Valen', 'Mica', 'Joaquín', 'Sofi', 'Nico', 'Cami', 'Fede', 'Agus', 'Pipa', 'Rocío', 'Santi', 'Bauti', 'Mora', 'Lola', 'Thiago', 'Emma', 'Facu', 'Juli', 'Brenda', 'Maxi', 'Nahuel', 'Abril', 'Ian', 'Delfi', 'Gonza', 'Zoe', 'Lauti', 'Mili', 'Ramiro', 'Pili'];
-const BOT_AVATARS = ['farmer', 'farmerwoman', 'grandma', 'grandpa', 'rancher', 'shepherd', 'milkmaid', 'beekeeper', 'farmkid'];
-export class Bots {
-  constructor(world, count) {
-    this.world = world; this.bots = [];
-    for (let i = 0; i < count; i++) {
-      const r = world.join('bot-' + i, { name: BOT_NAMES[i % BOT_NAMES.length], avatar: BOT_AVATARS[i % BOT_AVATARS.length] });
-      if (r.error) break;
-      const p = world.players.get(r.id); p.isBot = true;
-      p.prof.sheckles = Math.floor(Math.random() * 3000);
-      this.bots.push({ id: r.id, tx: p.x, tz: p.z, wait: Math.random() * 3, act: null });
-    }
-  }
-  tick(dt) {
-    const w = this.world;
-    for (const b of this.bots) {
-      const p = w.players.get(b.id); if (!p) continue;
-      const dx = b.tx - p.x, dz = b.tz - p.z, d = Math.hypot(dx, dz);
-      if (d > 0.5) { const s = Math.min(d, 7 * dt); p.x += dx / d * s; p.z += dz / d * s; p.ry = Math.atan2(dx, dz); p.mv = 1; continue; }
-      p.mv = 0;
-      if (b.act) { const a = b.act; b.act = null; w.handle(p.id, a); b.wait = 0.6; continue; }
-      b.wait -= dt; if (b.wait > 0) continue;
-      const f = p.prof, r = Math.random();
-      const ripe = f.plants.find((q) => q.ready && !q.k.startsWith('egg:'));
-      if (ripe) { const c = cellWorld(p.plot, ripe.c); b.tx = c.x; b.tz = c.z; b.act = { t: 'harvest', cell: ripe.c }; }
-      else if (r < 0.4) {
-        const free = []; for (let c = 0; c < GRID * GRID; c++) if (!f.plants.some((q) => q.c === c)) free.push(c);
-        let k = Object.keys(f.seeds)[0];
-        if (!k && f.sheckles >= 10) { f.sheckles -= 10; f.seeds.carrot = 1; k = 'carrot'; }
-        if (k && free.length) { const cell = free[Math.floor(Math.random() * free.length)]; const c = cellWorld(p.plot, cell); b.tx = c.x; b.tz = c.z; b.act = { t: 'plant', cell, k }; }
-      } else if (r < 0.6 && f.fruits.length) { b.tx = NPCS.sell.x + (Math.random() - 0.5) * 8; b.tz = NPCS.sell.z - 6; b.act = { t: 'sell', mode: 'all' }; }
-      else { const a = Math.random() * Math.PI * 2, rad = Math.random() * 28; b.tx = Math.cos(a) * rad; b.tz = Math.sin(a) * rad; b.wait = 1 + Math.random() * 4; }
-    }
-  }
-}
