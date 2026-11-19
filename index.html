@@ -4,110 +4,134 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#2f6b2f">
-<meta name="screen-orientation" content="portrait">
-<title>Cultiva tu Jardín (beta)</title>
+<meta name="screen-orientation" content="landscape">
+<title>Cultiva tu Jardín</title>
 <style>
-:root{--wood:#6b4423;--wood2:#8a5a2f;--leaf:#4f9d3a;--leaf2:#3c7d2c;--cream:#fff6dd;--gold:#ffcf3f;--ink:#3a2a18;--bad:#d9534f;--panel:rgba(255,246,221,.97)}
+:root{--wood:#6b4423;--wood2:#8a5a2f;--leaf:#4f9d3a;--leaf2:#3c7d2c;--cream:#fff6dd;--gold:#ffcf3f;--ink:#3a2a18;--bad:#d9534f;--panel:rgba(255,246,221,.97);
+--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px);--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 html,body{margin:0;height:100%;overflow:hidden;background:#101a10;font-family:ui-rounded,"Segoe UI",system-ui,sans-serif;color:var(--ink);touch-action:none}
-/* El juego SIEMPRE es vertical 9:16: #app se ajusta por JS */
-#app{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:100vw;height:100vh;overflow:hidden;background:#8fd3ff;box-shadow:0 0 40px #000a}
+/* El juego es HORIZONTAL (landscape) y ocupa toda la pantalla */
+#app{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden;background:#8fd3ff}
 canvas#c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 button{font:inherit;color:inherit;cursor:pointer;border:0}
 input,select{font:inherit}
-.btn{background:linear-gradient(#6fc24f,var(--leaf2));color:#fff;font-weight:800;padding:14px 22px;border-radius:16px;border-bottom:5px solid #2a5a1e;font-size:19px;text-shadow:0 1px 0 rgba(0,0,0,.3);min-height:50px}
+.btn{background:linear-gradient(#6fc24f,var(--leaf2));color:#fff;font-weight:800;padding:12px 22px;border-radius:16px;border-bottom:5px solid #2a5a1e;font-size:18px;text-shadow:0 1px 0 rgba(0,0,0,.3);min-height:48px}
 .btn:active{transform:translateY(2px);border-bottom-width:3px}
 .btn.alt{background:linear-gradient(#e7b765,#c58a35);border-bottom-color:#8a5a1e}
 .btn.dim{background:linear-gradient(#bbb,#999);border-bottom-color:#777}
 .btn.red{background:linear-gradient(#e86a62,#c0392b);border-bottom-color:#7d221a}
-.btn.sm{padding:8px 14px;font-size:15px;border-radius:12px;min-height:40px;border-bottom-width:4px}
-.btn:disabled{opacity:.6}
+.btn.sm{padding:8px 14px;font-size:15px;border-radius:12px;min-height:42px;border-bottom-width:4px}
+.btn:disabled{opacity:.55}
 .hidden{display:none!important}
 .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:50}
-.panel{background:var(--panel);border:4px solid var(--wood);border-radius:22px;box-shadow:0 10px 40px rgba(0,0,0,.4);padding:16px;max-height:86%;overflow:auto;touch-action:pan-y}
+.panel{background:var(--panel);border:4px solid var(--wood);border-radius:22px;box-shadow:0 10px 40px rgba(0,0,0,.4);padding:14px;max-height:92%;overflow:auto;touch-action:pan-y}
 h1,h2,h3{margin:.2em 0}
 #loading{background:linear-gradient(#9fe0ff,#bdf0a4);flex-direction:column;gap:14px;z-index:90;text-align:center;padding:20px}
 #loading h1{font-size:34px;color:var(--leaf2);text-shadow:0 2px 0 #fff}
-.bar{width:80%;height:20px;background:#fff8;border:3px solid var(--wood);border-radius:12px;overflow:hidden}
+.bar{width:60%;height:20px;background:#fff8;border:3px solid var(--wood);border-radius:12px;overflow:hidden}
 .bar>i{display:block;height:100%;width:0;background:linear-gradient(#ffe27a,var(--gold));transition:width .2s}
-/* menú / login */
+/* menú / login: dos columnas en horizontal */
 #menu{background:linear-gradient(rgba(20,60,20,.3),rgba(20,60,20,.6));z-index:60}
-#menu .panel{text-align:center;width:calc(100% - 24px);max-height:94%}
+#menu .panel{text-align:center;width:min(96%,860px);max-height:96%;display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;align-items:start}
 #menu h1{font-size:30px;color:var(--leaf2);line-height:1.05}
-.beta{display:inline-block;background:var(--gold);border-radius:8px;padding:0 8px;font-size:13px;vertical-align:middle}
 .sub{opacity:.75;font-size:13px;margin-bottom:6px}
 #srvCount{display:inline-block;margin:4px 0 8px;font-weight:800;font-size:14px;background:#fff;border:2px solid var(--wood2);border-radius:12px;padding:2px 10px}
 .tabs{display:flex;gap:6px;margin-bottom:8px}.tabs button{flex:1;padding:10px;border-radius:12px;background:#e8dbb5;font-weight:800;font-size:16px}.tabs button.on{background:var(--leaf);color:#fff}
-.field{width:100%;font-size:18px;padding:12px;border-radius:12px;border:3px solid var(--wood2);text-align:center;background:#fff;margin:4px 0;user-select:text;-webkit-user-select:text}
+.field{width:100%;font-size:18px;padding:11px;border-radius:12px;border:3px solid var(--wood2);text-align:center;background:#fff;margin:4px 0;user-select:text;-webkit-user-select:text}
 .field.bad{border-color:var(--bad)}.field.good{border-color:#2fb52f}
 #nameState,#authMsg{min-height:20px;font-size:14px;font-weight:700}
 #nameState.bad,#authMsg{color:#c0392b}#nameState.good{color:#1d8a1d}
-#avatars{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:8px 0}
+#avatars{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:6px 0}
 #avatars button{background:#fff;border:3px solid #d9c9a0;border-radius:12px;padding:3px 0;font-size:10px;line-height:1.1}
 #avatars button b{display:block;font-size:22px}
 #avatars button.on{border-color:var(--leaf);background:#e6ffd9}
 .row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px}
-/* HUD vertical */
+/* HUD horizontal */
 #hud{position:absolute;inset:0;pointer-events:none;z-index:10}
 #hud>*{pointer-events:auto}
-.chip{background:rgba(255,246,221,.93);border:3px solid var(--wood);border-radius:14px;padding:4px 10px;font-weight:800;font-size:15px;white-space:nowrap}
-#top{position:absolute;left:8px;right:8px;top:max(8px,env(safe-area-inset-top));display:flex;gap:6px;align-items:center}
-#money{font-size:20px;color:#8a5a00;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.chip{background:rgba(255,246,221,.93);border:3px solid var(--wood);border-radius:14px;padding:3px 10px;font-weight:800;font-size:14px;white-space:nowrap}
+#top{position:absolute;left:calc(8px + var(--sl));right:calc(8px + var(--sr));top:calc(6px + var(--st));display:flex;gap:6px;align-items:center;flex-wrap:wrap;pointer-events:none}
+#top>*{pointer-events:auto}
+#money{font-size:18px;color:#8a5a00;transition:transform .15s}
+#money.bump{transform:scale(1.25)}
 #plist{position:relative;padding:0}
-#plist .hd{padding:4px 10px;font-weight:800;cursor:pointer}
-#plistBody{display:none;position:absolute;right:0;top:44px;width:200px;background:var(--panel);border:3px solid var(--wood);border-radius:14px;padding:6px 8px;font-size:13px;z-index:5}
+#plist .hd{padding:3px 10px;font-weight:800;cursor:pointer}
+#plistBody{display:none;position:absolute;left:0;top:38px;width:210px;background:var(--panel);border:3px solid var(--wood);border-radius:14px;padding:6px 8px;font-size:13px;z-index:5}
 #plist.open #plistBody{display:block}
 .pr{display:flex;justify-content:space-between;gap:6px;padding:2px 0}.pr.me{color:#1d6b00;font-weight:800}
 .pr span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#bMenu{width:46px;height:44px;border-radius:14px;background:var(--panel);border:3px solid var(--wood);font-size:22px}
-#chips{position:absolute;left:8px;right:8px;top:calc(max(8px,env(safe-area-inset-top)) + 52px);display:flex;gap:6px;flex-wrap:wrap;pointer-events:none}
-#chips .chip{font-size:13px;padding:3px 9px}
+#bMenu{margin-left:auto;width:46px;height:42px;border-radius:14px;background:var(--panel);border:3px solid var(--wood);font-size:22px}
+#top .chip{font-size:13px}
 #ev{background:linear-gradient(#fff0b0,#ffd23a);border-color:#a87a00;animation:glow 1.6s infinite alternate}
 @keyframes glow{from{box-shadow:0 0 4px #ffd23a}to{box-shadow:0 0 14px #ffb300}}
-#banner{position:absolute;left:10px;right:10px;top:40%;text-align:center;padding:14px;border-radius:20px;border:4px solid #fff;color:#fff;text-shadow:0 2px 4px #000a;transform:translateY(-200%);opacity:0;transition:transform .5s cubic-bezier(.2,1.4,.4,1),opacity .4s;pointer-events:none;z-index:20}
-#banner.show{transform:none;opacity:1}
-#banner b{display:block;font-size:26px}#banner span{font-size:15px}
-#chatlog{position:absolute;left:8px;top:calc(max(8px,env(safe-area-inset-top)) + 110px);width:70%;font-size:13px;pointer-events:none;text-shadow:0 1px 2px #000,0 0 3px #000;color:#fff}
+#banner{position:absolute;left:50%;width:min(74%,620px);top:20%;text-align:center;padding:12px;border-radius:20px;border:4px solid #fff;color:#fff;text-shadow:0 2px 4px #000a;transform:translate(-50%,-250%);opacity:0;transition:transform .5s cubic-bezier(.2,1.4,.4,1),opacity .4s;pointer-events:none;z-index:20}
+#banner.show{transform:translate(-50%,0);opacity:1}
+#banner b{display:block;font-size:26px}#banner span{font-size:15px}#banner i{display:block;font-style:normal;font-size:13px;opacity:.9;margin-top:2px}
+#chatlog{position:absolute;left:calc(8px + var(--sl));top:calc(var(--st) + 74px);width:36%;font-size:13px;pointer-events:none;text-shadow:0 1px 2px #000,0 0 3px #000;color:#fff}
 #chatlog div{margin:1px 0;animation:fade 12s forwards}
 @keyframes fade{0%,80%{opacity:1}100%{opacity:0}}
-#chatbox{position:absolute;left:8px;right:8px;bottom:104px;display:flex;gap:6px;z-index:15}
+#chatbox{position:absolute;left:calc(150px + var(--sl));right:calc(130px + var(--sr));bottom:84px;display:flex;gap:6px;z-index:15}
 #chatInput{flex:1;padding:10px;border-radius:12px;border:3px solid var(--wood);user-select:text;-webkit-user-select:text;font-size:16px}
-#btns{position:absolute;right:max(8px,env(safe-area-inset-right));bottom:96px;display:flex;flex-direction:column;gap:7px}
-#btns button{width:56px;height:56px;border-radius:16px;background:var(--panel);border:3px solid var(--wood);font-size:24px;box-shadow:0 3px 0 #0003;position:relative;line-height:1}
-#btns button small{position:absolute;bottom:0;left:0;right:0;font-size:9px;font-weight:800}
+#btns{position:absolute;right:calc(8px + var(--sr));bottom:calc(8px + var(--sb));display:grid;grid-template-columns:repeat(2,54px);gap:6px}
+#btns button{width:54px;height:54px;border-radius:15px;background:var(--panel);border:3px solid var(--wood);font-size:22px;box-shadow:0 3px 0 #0003;position:relative;line-height:1}
+#btns button small{position:absolute;bottom:0;left:0;right:0;font-size:8.5px;font-weight:800}
 #btns button:active{transform:translateY(2px)}
-#hotbar{position:absolute;left:6px;right:6px;bottom:max(8px,env(safe-area-inset-bottom));display:flex;gap:6px;overflow-x:auto;padding:6px 4px 2px;touch-action:pan-x;background:rgba(0,0,0,.18);border-radius:16px}
-#hotbar button{flex:0 0 auto;width:62px;height:66px;border-radius:13px;background:rgba(255,246,221,.92);border:3px solid var(--wood);position:relative;font-size:28px;line-height:1}
+#hotbar{position:absolute;left:calc(150px + var(--sl));right:calc(130px + var(--sr));bottom:calc(6px + var(--sb));display:flex;gap:6px;overflow-x:auto;padding:6px 4px 2px;touch-action:pan-x;background:rgba(0,0,0,.18);border-radius:16px;justify-content:safe center}
+#hotbar button{flex:0 0 auto;width:60px;height:64px;border-radius:13px;background:rgba(255,246,221,.92);border:3px solid var(--wood);position:relative;font-size:26px;line-height:1}
 #hotbar button.on{border-color:#2fb52f;background:#e8ffd6;transform:translateY(-6px);box-shadow:0 0 0 3px #7cff7c88}
 #hotbar button i{position:absolute;right:2px;bottom:12px;font-size:12px;font-style:normal;font-weight:900;color:#fff;background:#000a;border-radius:6px;padding:0 4px}
 #hotbar button em{position:absolute;left:3px;top:0;font-size:10px;font-style:normal;opacity:.55}
 #hotbar button span{display:block;font-size:10px;font-weight:800;margin-top:1px;white-space:nowrap;overflow:hidden}
-#prompt{position:absolute;left:50%;transform:translateX(-50%);bottom:250px;white-space:nowrap}
-#joy{position:absolute;left:max(14px,env(safe-area-inset-left));bottom:104px;width:136px;height:136px;border-radius:50%;background:rgba(255,255,255,.28);border:3px solid rgba(255,255,255,.7);touch-action:none}
-#joyKnob{position:absolute;left:38px;top:38px;width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.78);box-shadow:0 2px 6px #0005;pointer-events:none}
-#toasts{position:absolute;left:0;right:0;top:calc(max(8px,env(safe-area-inset-top)) + 150px);display:flex;flex-direction:column;gap:6px;align-items:center;z-index:70;pointer-events:none;padding:0 8px}
-.toast{background:#2b2b2bdd;color:#fff;padding:9px 14px;border-radius:12px;font-weight:700;font-size:15px;animation:pop .25s,fade2 .4s 2.6s forwards;max-width:100%;text-align:center}
+#prompt{position:absolute;left:50%;transform:translateX(-50%);bottom:92px;white-space:nowrap}
+#joy{position:absolute;left:calc(14px + var(--sl));bottom:calc(10px + var(--sb));width:128px;height:128px;border-radius:50%;background:rgba(255,255,255,.28);border:3px solid rgba(255,255,255,.7);touch-action:none}
+#joyKnob{position:absolute;left:34px;top:34px;width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.78);box-shadow:0 2px 6px #0005;pointer-events:none}
+#toasts{position:absolute;left:0;right:0;top:calc(var(--st) + 80px);display:flex;flex-direction:column;gap:6px;align-items:center;z-index:70;pointer-events:none;padding:0 8px}
+.toast{background:#2b2b2bdd;color:#fff;padding:8px 14px;border-radius:12px;font-weight:700;font-size:15px;animation:pop .25s,fade2 .4s 2.6s forwards;max-width:min(90%,560px);text-align:center}
 .toast.good{background:#237a2fe6}.toast.bad{background:#b13a36e6}.toast.gold{background:#a87a00e6}
 @keyframes pop{from{transform:scale(.7);opacity:0}}
 @keyframes fade2{to{opacity:0;transform:translateY(-10px)}}
-/* modales: hoja inferior, pensada para pulgar */
-.modal{background:rgba(0,0,0,.4);z-index:55;align-items:flex-end}
-.modal .panel{width:100%;max-height:82%;border-radius:24px 24px 0 0;border-bottom:0;padding-bottom:max(16px,env(safe-area-inset-bottom))}
-.mh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;position:sticky;top:-16px;background:var(--panel);padding:6px 0;z-index:2}
+.floater{position:absolute;pointer-events:none;font-weight:900;font-size:24px;color:#ffd23a;text-shadow:0 2px 0 #7a4a00,0 0 8px #000a;animation:flo 1.5s ease-out forwards;z-index:30;white-space:nowrap;transform:translate(-50%,-50%)}
+@keyframes flo{0%{opacity:0;transform:translate(-50%,0) scale(.6)}15%{opacity:1;transform:translate(-50%,-10px) scale(1.2)}100%{opacity:0;transform:translate(-50%,-70px) scale(1)}}
+#hatchPop{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;z-index:40;pointer-events:none;color:#fff;text-shadow:0 2px 6px #000;animation:hp 3.2s forwards}
+#hatchPop .big{font-size:84px;filter:drop-shadow(0 0 18px #fff)}#hatchPop b{display:block;font-size:26px}
+@keyframes hp{0%{opacity:0;transform:translate(-50%,-30%) scale(.3)}12%{opacity:1;transform:translate(-50%,-50%) scale(1.25)}20%{transform:translate(-50%,-50%) scale(1)}85%{opacity:1}100%{opacity:0;transform:translate(-50%,-70%) scale(1)}}
+/* modales centrados */
+.modal{background:rgba(0,0,0,.45);z-index:55}
+.modal .panel{width:min(96%,720px);max-height:92%}
+.mh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;position:sticky;top:-14px;background:var(--panel);padding:6px 0;z-index:2}
 .mh h2{font-size:21px}
 .x{background:var(--bad);color:#fff;font-weight:900;border-radius:12px;width:44px;height:44px;font-size:20px;flex:0 0 auto}
-.item{display:flex;align-items:center;gap:8px;background:#fff;border:2px solid #e3d3a8;border-radius:14px;padding:8px;margin:6px 0}
-.item .e{font-size:30px;width:40px;text-align:center}
+.item{display:flex;align-items:center;gap:8px;background:#fff;border:2px solid #e3d3a8;border-radius:14px;padding:7px;margin:5px 0}
+.item .e{font-size:28px;width:38px;text-align:center}
 .item .t{flex:1;line-height:1.2;min-width:0}.item .t small{opacity:.75;display:block;font-size:12px}
-.item.out{opacity:.5}.item.deal{border-color:#ff7a00;background:#fff4e0}
+.item.out{opacity:.5}.item.deal{border-color:#ff7a00;background:#fff4e0}.item.cur{border-color:#2fb52f;background:#eaffe0}.item.lock{opacity:.6}
 .rar{display:inline-block;border-radius:8px;padding:0 6px;font-size:11px;color:#fff;font-weight:800;margin-left:4px;vertical-align:middle}
 .tag{display:inline-block;border-radius:8px;padding:0 6px;font-size:11px;color:#fff;margin-left:3px;font-weight:800;text-shadow:0 1px 1px #0006}
-.how p{margin:.5em 0;font-size:15px}
+.how p{margin:.45em 0;font-size:15px}
 .sec{margin:10px 0 4px;font-weight:900;font-size:15px;border-bottom:2px solid #d9c9a0}
 .grid{display:flex;flex-wrap:wrap;gap:6px}
+#shopBody,#admPlayers{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:0 10px}
 .admrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0}
 .admrow select,.admrow input{padding:8px;border-radius:10px;border:2px solid var(--wood2);flex:1;min-width:80px;user-select:text;-webkit-user-select:text;background:#fff}
-#rotate{background:#101a10;color:#fff;flex-direction:column;gap:10px;font-size:22px;text-align:center;z-index:99}
+#rotate{background:rgba(16,26,16,.94);color:#fff;flex-direction:column;gap:10px;font-size:20px;text-align:center;z-index:99;padding:20px}
+/* celular en vertical: se puede jugar, pero se recomienda girar */
+@media (orientation:portrait){
+  #menu .panel{grid-template-columns:1fr}
+  #btns{grid-template-columns:repeat(2,50px)}#btns button{width:50px;height:50px}
+  #hotbar{left:8px;right:8px;bottom:calc(150px + var(--sb))}
+  #chatbox{left:8px;right:8px;bottom:220px}
+  #prompt{bottom:230px}
+  #btns{bottom:calc(150px + var(--sb))}
+  #shopBody,#admPlayers{grid-template-columns:1fr}
+}
+@media (max-height:480px) and (orientation:landscape){
+  .btn{padding:8px 16px;font-size:16px;min-height:42px}
+  #menu h1{font-size:24px}.field{padding:8px;font-size:16px}
+  #avatars button b{font-size:18px}
+  .panel{padding:10px}
+  #loading h1{font-size:26px}
+}
 </style>
 <script src="config.js"></script>
 <script type="importmap">
@@ -129,32 +153,34 @@ h1,h2,h3{margin:.2em 0}
 
 <div id="menu" class="overlay hidden">
   <div class="panel">
-    <h1>🌻 Cultiva tu Jardín <span class="beta">BETA</span></h1>
-    <div class="sub">Granja multijugador · hasta 4 jugadores por servidor</div>
-    <div id="srvCount">🖥️ Servidor: …</div>
-
-    <div id="resumeBox" class="hidden">
-      <p style="margin:6px 0">Hola, <b id="resumeName"></b> 👋</p>
-      <div class="row"><button class="btn" id="btnResume">▶ Jugar</button></div>
-      <div class="row"><button class="btn alt sm" id="btnSwitch">Cambiar de cuenta</button></div>
-    </div>
-
-    <div id="authBox">
-      <div class="tabs"><button id="tabLogin" class="on">Iniciar sesión</button><button id="tabReg">Registrarse</button></div>
-      <input id="user" class="field" maxlength="14" placeholder="Nombre de usuario" autocomplete="username" autocapitalize="off" spellcheck="false">
-      <div id="nameState"></div>
-      <input id="pass" class="field" type="password" maxlength="64" placeholder="Contraseña" autocomplete="current-password">
-      <input id="pass2" class="field hidden" type="password" maxlength="64" placeholder="Repetir contraseña" autocomplete="new-password">
-      <div class="sub" style="margin-top:6px">Elegí tu personaje:</div>
+    <div class="mcol">
+      <h1>🌻 Cultiva tu Jardín</h1>
+      <div class="sub">Granja multijugador · hasta 4 jugadores por servidor</div>
+      <div id="srvCount">🖥️ Servidor: …</div>
+      <div class="sub">Elegí tu personaje:</div>
       <div id="avatars"></div>
-      <div id="authMsg"></div>
-      <div class="row"><button class="btn" id="btnAuth">▶ Entrar</button></div>
+      <div class="row">
+        <button class="btn alt sm" id="btnHow">❓ Cómo jugar</button>
+        <button class="btn alt sm" id="btnQuality">⚙️ Gráficos</button>
+      </div>
     </div>
-    <div class="row">
-      <button class="btn alt sm" id="btnHow">❓ Cómo jugar</button>
-      <button class="btn alt sm" id="btnQuality">⚙️ Gráficos</button>
+    <div class="mcol">
+      <div id="resumeBox" class="hidden">
+        <p style="margin:6px 0">Hola, <b id="resumeName"></b> 👋</p>
+        <div class="row"><button class="btn" id="btnResume">▶ Jugar</button></div>
+        <div class="row"><button class="btn alt sm" id="btnSwitch">Cambiar de cuenta</button></div>
+      </div>
+      <div id="authBox">
+        <div class="tabs"><button id="tabLogin" class="on">Iniciar sesión</button><button id="tabReg">Registrarse</button></div>
+        <input id="user" class="field" maxlength="14" placeholder="Nombre de usuario" autocomplete="username" autocapitalize="off" spellcheck="false">
+        <div id="nameState"></div>
+        <input id="pass" class="field" type="password" maxlength="64" placeholder="Contraseña" autocomplete="current-password">
+        <input id="pass2" class="field hidden" type="password" maxlength="64" placeholder="Repetir contraseña" autocomplete="new-password">
+        <div id="authMsg"></div>
+        <div class="row"><button class="btn" id="btnAuth">▶ Entrar</button></div>
+      </div>
+      <div id="menuStatus" style="min-height:20px;font-size:14px;margin-top:8px;color:#7a3b00;font-weight:700"></div>
     </div>
-    <div id="menuStatus" style="min-height:20px;font-size:14px;margin-top:8px;color:#7a3b00;font-weight:700"></div>
   </div>
 </div>
 
@@ -162,15 +188,14 @@ h1,h2,h3{margin:.2em 0}
   <div id="top">
     <div id="money" class="chip">💰 <span id="moneyV">0</span></div>
     <div id="plist" class="chip"><div class="hd">👥 <span id="pcount">0</span>/4 ▾</div><div id="plistBody"></div></div>
-    <button id="bMenu">☰</button>
-  </div>
-  <div id="chips">
     <div id="wx" class="chip">☀️ Despejado</div>
     <div id="ev" class="chip hidden"></div>
+    <div id="tchip" class="chip">🕘 –</div>
     <div id="rs" class="chip">🛒 –</div>
     <div id="plotchip" class="chip">🌾 –</div>
+    <button id="bMenu">☰</button>
   </div>
-  <div id="banner"><b></b><span></span></div>
+  <div id="banner"><b></b><span></span><i></i></div>
   <div id="chatlog"></div>
   <div id="chatbox" class="hidden"><input id="chatInput" maxlength="100" placeholder="Escribí y Enter…" autocomplete="off"><button class="btn sm" id="chatSend">➤</button></div>
   <div id="btns">
@@ -178,9 +203,10 @@ h1,h2,h3{margin:.2em 0}
     <button id="bChat">💬<small>Chat</small></button>
     <button id="bPets">🐾<small>Mascotas</small></button>
     <button id="bBag">🎒<small>Mochila</small></button>
+    <button id="bUpgrade">🏡<small>Mejorar</small></button>
     <button id="bHarvest" class="hidden">🧺<small>Cosechar</small></button>
     <button id="bTown">🏪<small>Tiendas</small></button>
-    <button id="bGarden">🏡<small>Mi jardín</small></button>
+    <button id="bGarden">🌱<small>Mi jardín</small></button>
     <button id="bJump">⤒<small>Saltar</small></button>
   </div>
   <button id="prompt" class="btn hidden"></button>
@@ -200,13 +226,19 @@ h1,h2,h3{margin:.2em 0}
   <div id="bagBody"></div>
 </div></div>
 
-<div id="pause" class="overlay modal hidden"><div class="panel" style="text-align:center">
+<div id="plot" class="overlay modal hidden"><div class="panel">
+  <div class="mh"><h2>🏡 Mejorar mi parcela</h2><button class="x" data-close="plot">✕</button></div>
+  <div id="plotBody"></div>
+</div></div>
+
+<div id="pause" class="overlay modal hidden"><div class="panel" style="text-align:center;max-width:460px">
   <div class="mh"><h2>☰ Menú</h2><button class="x" data-close="pause">✕</button></div>
   <div style="display:flex;flex-direction:column;gap:8px">
     <button class="btn" data-close="pause">▶ Seguir jugando</button>
-    <button class="btn alt" id="pGarden">🏡 Ir a mi jardín</button>
+    <button class="btn alt" id="pGarden">🌱 Ir a mi jardín</button>
     <button class="btn alt" id="pHow">❓ Cómo jugar</button>
-    <div class="admrow"><button class="btn alt sm" id="pMute">🔊 Sonido: sí</button><input id="pVol" type="range" min="0" max="100" value="70"></div>
+    <div class="admrow"><button class="btn alt sm" id="pMute">🔊 Sonido: sí</button><span style="font-size:12px">Efectos</span><input id="pVol" type="range" min="0" max="100" value="70"></div>
+    <div class="admrow"><span style="font-size:13px">🎵 Música</span><input id="pMus" type="range" min="0" max="100" value="50"></div>
     <button class="btn alt" id="pFull">⛶ Pantalla completa</button>
     <button class="btn alt" id="pQuality">⚙️ Gráficos</button>
     <button class="btn dim" id="pExit">🚪 Cerrar sesión</button>
@@ -216,22 +248,23 @@ h1,h2,h3{margin:.2em 0}
 
 <div id="how" class="overlay modal hidden"><div class="panel how">
   <div class="mh"><h2>❓ Cómo jugar</h2><button class="x" data-close="how">✕</button></div>
-  <p>🌱 <b>1.</b> Elegí una semilla en la barra de abajo y tocá una celda de <b>tu parcela</b> (la del ⭐) para plantar.</p>
+  <p>🌱 <b>1.</b> Elegí una semilla en la barra de abajo y tocá una celda de <b>tu parcela</b> para plantar.</p>
   <p>💧 <b>2.</b> Con la regadera 🚿 tocá una planta para que crezca más rápido. Cuando está lista, tocala para cosechar o usá 🧺.</p>
-  <p>💰 <b>3.</b> Caminá al centro: <b>Steve</b> compra tus frutas. Más peso y más mutaciones = más plata.</p>
-  <p>🛒 <b>4.</b> <b>Sam</b> vende semillas, el <b>Abuelo Tito</b> equipo y la <b>Abuela Rosa</b> huevos. Se reponen cada 5 min y hay ofertas y productos raros.</p>
-  <p>✨ <b>Mutaciones:</b> 💧 Mojada x2 · ❄️ Fría x2 · 🧊 Congelada x10 · ⚡ Electrizada x100 · 🪙 Dorada x20 · 🌈 Arcoíris x50 · 🍫 Chocolate x15. Se suman entre sí.</p>
-  <p>🎉 <b>Eventos:</b> cada tanto hay eventos globales con premios para todos. ¡Prestá atención al cartel!</p>
+  <p>🏪 <b>3.</b> En la plaza hay 4 vendedores. Caminá hasta el <b>círculo brillante</b> que tienen adelante: la tienda se abre sola. Lejos del círculo no se puede comprar ni vender.</p>
+  <p>💰 <b>4.</b> <b>Steve</b> compra tus frutas. Más peso y más mutaciones = más plata. <b>Sam</b> vende semillas, el <b>Abuelo Tito</b> equipo y la <b>Abuela Rosa</b> huevos.</p>
+  <p>🏡 <b>5.</b> Con el botón 🏡 <b>Mejorar</b> ampliás tu parcela (8×8 → 16×16) pagando Sheckles.</p>
+  <p>✨ <b>Mutaciones:</b> 💧 Mojada x2 · ❄️ Fría x2 · 🧊 Congelada x10 · ⚡ Electrizada x100 · 🪙 Dorada x20 · 🌈 Arcoíris x50 · 🍫 Chocolate x15 · 🔥 Quemada x4 · 🌙 Lunar x3 · 🌸 Florecida x6 · 👻 Embrujada x15 · 🌀 Retorcida x5. Se suman entre sí.</p>
+  <p>🎉 <b>Eventos:</b> cada tanto hay eventos globales (Rainbow Garden, Mega Thunderstorm, Heat Wave, Mystery…) con efectos y premios para todos.</p>
   <p>🥚 <b>Mascotas:</b> colocá un huevo, esperá y tocalo. Equipá hasta 3 desde 🐾.</p>
   <p><b>Controles:</b> joystick izquierdo para caminar, arrastrá la pantalla para girar la cámara, pellizcá para zoom. PC: WASD, mouse, 1-9, E, H, Enter.</p>
 </div></div>
 
-<div id="admin" class="overlay modal hidden"><div class="panel">
+<div id="admin" class="overlay modal hidden"><div class="panel" style="width:min(96%,900px)">
   <div class="mh"><h2>👑 Panel de administración</h2><button class="x" data-close="admin">✕</button></div>
   <div id="admBody">Cargando…</div>
 </div></div>
 
-<div id="rotate" class="overlay hidden"><div style="font-size:60px">📱</div><div>Poné el celular en vertical</div></div>
+<div id="rotate" class="overlay hidden"><div style="font-size:60px">🔄</div><div>Para jugar mejor, girá el celular a <b>horizontal</b></div><button class="btn sm" id="rotOk">Jugar así igual</button></div>
 </div>
 
 <script>
