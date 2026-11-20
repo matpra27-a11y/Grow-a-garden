@@ -91,7 +91,7 @@ const world = new World({
   send: (id, msg) => { const c = conns.get(id); if (c) wsSend(c.sock, JSON.stringify(msg)); },
   broadcast: (msg, except) => { const s = JSON.stringify(msg); for (const [id, c] of conns) if (id !== except) wsSend(c.sock, s); },
   kick: (id, why) => { const c = conns.get(id); if (c) { wsSend(c.sock, JSON.stringify({ t: 'error', msg: why })); wsClose(c.sock, 1008); } },
-  extra: () => ({ accounts: accounts.size, uptime: Math.round((Date.now() - STARTED) / 1000), owners: [...OWNERS] }),
+  extra: () => ({ accounts: accounts.size, uptime: Math.round((Date.now() - STARTED) / 1000), owners: [...OWNERS], mem: Math.round(process.memoryUsage().rss / 1048576), node: process.version, storage: USE_REDIS ? 'Upstash (permanente)' : 'disco' }),
 });
 let loaded = false, dirty = false;
 function applyData(d) { // mezcla: lo que ya existe en memoria no se pisa

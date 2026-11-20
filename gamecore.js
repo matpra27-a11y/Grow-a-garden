@@ -6,8 +6,24 @@
 
 export const MAX_PLAYERS = 4;           // jugadores reales máximos = cantidad de parcelas
 export const CELL = 2;                  // tamaño de una celda de siembra (m)
-export const GRID = 8;                  // 8x8 celdas por parcela
-export const PLOT_SIZE = CELL * GRID;   // 16 m
+export const GRID = 16;                 // grilla MÁXIMA (el índice de celda es z*16 + x). La parcela empieza en 8x8 centrada.
+export const PLOT_SIZE = CELL * GRID;   // 32 m (tamaño máximo)
+// Mejoras de parcela: nivel 0..4 -> 8x8, 10x10, 12x12, 14x14, 16x16
+export const PLOT_LEVELS = [{ n: 8, cost: 0 }, { n: 10, cost: 1500 }, { n: 12, cost: 12000 }, { n: 14, cost: 75000 }, { n: 16, cost: 400000 }];
+export const levelSize = (lvl) => PLOT_LEVELS[Math.max(0, Math.min(PLOT_LEVELS.length - 1, lvl | 0))].n;
+export function cellOk(lvl, c) { // ¿la celda c existe (está desbloqueada) en una parcela de nivel lvl?
+  if (!Number.isInteger(c) || c < 0 || c >= GRID * GRID) return false;
+  const n = levelSize(lvl), off = (GRID - n) / 2, gx = c % GRID, gz = (c / GRID) | 0;
+  return gx >= off && gx < off + n && gz >= off && gz < off + n;
+}
+export const DAY_LEN = 720; // segundos que dura un día completo (día + noche)
+// hora del día 0..24 (arranca a las 9:00) y nivel de oscuridad 0..1
+export function dayInfo(t) {
+  const hour = ((t / DAY_LEN) * 24 + 9) % 24;
+  const sun = Math.sin((hour - 6) / 12 * Math.PI); // >0 de día
+  const night = Math.max(0, Math.min(1, 0.5 - sun * 1.6));
+  return { hour, night };
+}
 export const WORLD_RADIUS = 95;
 export const GROW_SPEED = +(globalThis.process && globalThis.process.env && globalThis.process.env.GROW_SPEED) || 1; // 1 = normal (en el servidor: GROW_SPEED=10 para probar)
 
@@ -36,8 +52,13 @@ export const MUTS = {
   gold:    { name: 'Dorada',   mult: 20,  color: '#ffd23a' },
   rainbow: { name: 'Arcoíris', mult: 50,  color: '#ff6ad5' },
   choco:   { name: 'Chocolate', mult: 15, color: '#7b3f00' },
+  burnt:   { name: 'Quemada',  mult: 4,   color: '#e2551d' },
+  moonlit: { name: 'Lunar',    mult: 3,   color: '#9aa8ff' },
+  bloom:   { name: 'Florecida', mult: 6,  color: '#ff8fcf' },
+  spooky:  { name: 'Embrujada', mult: 15, color: '#a04cff' },
+  twisted: { name: 'Retorcida', mult: 5,  color: '#d04a6a' },
 };
-export const MUT_EMOJI = { wet: '💧', chilled: '❄️', frozen: '🧊', shocked: '⚡', gold: '🪙', rainbow: '🌈', choco: '🍫' };
+export const MUT_EMOJI = { wet: '💧', chilled: '❄️', frozen: '🧊', shocked: '⚡', gold: '🪙', rainbow: '🌈', choco: '🍫', burnt: '🔥', moonlit: '🌙', bloom: '🌸', spooky: '👻', twisted: '🌀' };
 export function mutMult(ms) { let m = 1; for (const k of ms) m += MUTS[k].mult - 1; return m; }
 
 // ---------- Clima (global para todo el servidor) ----------
@@ -52,11 +73,22 @@ export const WEATHER_EVERY = [100, 200]; // seg entre eventos (aleatorio)
 
 // ---------- Eventos globales ----------
 export const EVENTS = {
-  rainbowgarden: { name: 'Jardín Arcoíris', emoji: '🌈', dur: 120, grow: 1.5, muts: { rainbow: 0.006, gold: 0.01 }, color: '#ff6ad5', desc: 'Más mutaciones Arcoíris y Doradas · crecimiento +50%', reward: { sheckles: 400 } },
-  sheckle_rain:  { name: 'Lluvia de Sheckles', emoji: '💰', dur: 90, grow: 1, muts: {}, tick: { every: 10, sheckles: 40 }, color: '#ffc928', desc: '¡Llueven Sheckles! Ganás plata cada 10 segundos', reward: { sheckles: 300 } },
-  chocolate_rain: { name: 'Lluvia de Chocolate', emoji: '🍫', dur: 90, grow: 1.2, muts: { choco: 0.03 }, color: '#8a4a12', desc: 'Mutación Chocolate x15 · crecimiento +20%', reward: { eggs: { common: 1 } } },
-  laser_storm:   { name: 'Tormenta Láser', emoji: '⚡', dur: 75, grow: 1, muts: { shocked: 0.004, gold: 0.006 }, color: '#2ad4ff', desc: 'Rayos láser: Electrizada x100 y Dorada x20', reward: { sheckles: 600 } },
-  harvest_fest:  { name: 'Fiesta de la Cosecha', emoji: '🎃', dur: 120, grow: 1.1, muts: {}, sellBonus: 0.5, color: '#ff8a1f', desc: 'Vendés todo +50% · evento de temporada', reward: { seeds: { pumpkin: 1 }, sheckles: 200 } },
+  rainbowgarden:  { name: 'Rainbow Garden', emoji: '🌈', dur: 120, grow: 1.5, muts: { rainbow: 0.006, gold: 0.01 }, color: '#ff6ad5', desc: 'Más mutaciones Arcoíris y Doradas · crecimiento +50%', reward: { sheckles: 400 } },
+  megathunder:    { name: 'Mega Thunderstorm', emoji: '⚡', dur: 80, grow: 1.3, muts: { wet: 0.25, shocked: 0.012 }, color: '#4a5aa8', desc: '¡Rayos por todos lados! Electrizada x100 · crecimiento +30%', reward: { sheckles: 700 } },
+  sheckle_rain:   { name: 'Sheckle Storm', emoji: '💰', dur: 90, grow: 1, muts: {}, tick: { every: 10, sheckles: 40 }, color: '#ffc928', desc: '¡Llueven Sheckles! Ganás plata cada 10 segundos', reward: { sheckles: 300 } },
+  frozen_garden:  { name: 'Frozen Garden', emoji: '❄️', dur: 90, grow: 0.9, muts: { chilled: 0.2, frozen: 0.025 }, color: '#6ec6ff', desc: 'Jardín helado: Fría x2 y Congelada x10', reward: { sheckles: 500 } },
+  heatwave:       { name: 'Heat Wave', emoji: '🔥', dur: 80, grow: 1.4, muts: { burnt: 0.02, gold: 0.004 }, color: '#ff6a2a', desc: 'Ola de calor: Quemada x4 · crecimiento +40%', reward: { sheckles: 350 } },
+  moonlight:      { name: 'Moonlight Garden', emoji: '🌙', dur: 100, grow: 1.2, muts: { moonlit: 0.03, gold: 0.003 }, color: '#5a5ad8', desc: 'Noche de luna: mutación Lunar x3', reward: { eggs: { common: 1 } } },
+  solar_blessing: { name: 'Solar Blessing', emoji: '☀️', dur: 90, grow: 1.8, muts: { gold: 0.012 }, color: '#ffb300', desc: 'Bendición solar: crecimiento +80% y más Doradas', reward: { sheckles: 450, gear: { sprinkler: 1 } } },
+  nature_storm:   { name: 'Nature Storm', emoji: '🌿', dur: 90, grow: 1.5, muts: { wet: 0.2, bloom: 0.015 }, color: '#3fa34d', desc: 'La naturaleza despierta: Florecida x6 · crecimiento +50%', reward: { seeds: { carrot: 3, strawberry: 2 } } },
+  flower_festival:{ name: 'Flower Festival', emoji: '🌸', dur: 100, grow: 1.2, muts: { bloom: 0.03 }, sellBonus: 0.25, color: '#ff8fcf', desc: 'Florecida x6 y vendés todo +25%', reward: { sheckles: 300, seeds: { sunflower: 1 } } },
+  spooky_harvest: { name: 'Spooky Harvest', emoji: '🎃', dur: 100, grow: 1.1, muts: { spooky: 0.015 }, sellBonus: 0.3, color: '#8a3fd0', desc: 'Cosecha embrujada: Embrujada x15 y vendés +30%', reward: { seeds: { pumpkin: 1 }, sheckles: 250 } },
+  golden_hour:    { name: 'Golden Hour', emoji: '✨', dur: 75, grow: 1.3, muts: { gold: 0.02 }, sellBonus: 0.2, color: '#ffc13a', desc: 'Hora dorada: muchas Doradas x20 y vendés +20%', reward: { sheckles: 600 } },
+  mutation_frenzy:{ name: 'Mutation Frenzy', emoji: '🧬', dur: 70, grow: 1, muts: { wet: 0.1, chilled: 0.08, shocked: 0.006, gold: 0.01, rainbow: 0.004, twisted: 0.02 }, color: '#7a5ad8', desc: '¡Frenesí! Todas las mutaciones mucho más probables', reward: { eggs: { rare: 1 } } },
+  mystery:        { name: 'Mystery Event', emoji: '❓', dur: 90, grow: 1, muts: {}, mystery: true, color: '#8f7ad8', desc: 'Un evento misterioso… ¿qué efecto tendrá? Se revela al final', reward: { sheckles: 800, eggs: { common: 1 } } },
+  chocolate_rain: { name: 'Chocolate Rain', emoji: '🍫', dur: 90, grow: 1.2, muts: { choco: 0.03 }, color: '#8a4a12', desc: 'Mutación Chocolate x15 · crecimiento +20%', reward: { eggs: { common: 1 } } },
+  laser_storm:    { name: 'Laser Storm', emoji: '🔮', dur: 75, grow: 1, muts: { shocked: 0.004, gold: 0.006 }, color: '#2ad4ff', desc: 'Rayos láser: Electrizada x100 y Dorada x20', reward: { sheckles: 600 } },
+  harvest_fest:   { name: 'Fiesta de la Cosecha', emoji: '🍂', dur: 120, grow: 1.1, muts: {}, sellBonus: 0.5, color: '#ff8a1f', desc: 'Vendés todo +50% · evento de temporada', reward: { seeds: { pumpkin: 1 }, sheckles: 200 } },
 };
 export const EVENT_EVERY = [420, 780]; // seg entre eventos automáticos
 
@@ -136,6 +168,10 @@ export const NPCS = {
   sell:  { x: 0,   z: 17,  rot: Math.PI,     name: 'Steve', title: 'Vender cosecha', shop: 'sell',  model: 'rancher' },
 };
 export const NPC_RANGE = 13;
+// Círculo de interacción: delante de cada NPC. Hay que estar DENTRO para abrir la tienda / comprar / vender.
+export const NPC_CIRCLE_DIST = 4.6, NPC_CIRCLE_R = 3.0, NPC_CIRCLE_TOL = 1.6;
+export function npcCircle(key) { const n = NPCS[key]; return n ? { x: n.x + Math.sin(n.rot) * NPC_CIRCLE_DIST, z: n.z + Math.cos(n.rot) * NPC_CIRCLE_DIST, r: NPC_CIRCLE_R } : null; }
+export const MAX_SPEED = 22; // m/s tolerados por el servidor (el cliente camina a 11)
 export const SPAWN = { x: 0, z: 0 };
 
 // ---------- Utilidades ----------
@@ -185,6 +221,7 @@ export class World {
     this.weather = null;            // {k, until}
     this.nextWeather = rr(this.rng, 40, 80);
     this.nextEvent = rr(this.rng, 240, 420);
+    this.lastEvent = null; this.noticed = false;
     this.lbTimer = 0;
     this.restock();
   }
@@ -192,15 +229,16 @@ export class World {
   // ---------------- Jugadores ----------------
   newProfile(name) {
     return {
-      name, sheckles: 40,
+      v: 2, lvl: 0, name, sheckles: 40,
       seeds: { carrot: 3, strawberry: 1 },
       eggs: {}, gear: {}, fruits: [], pets: [], equipped: [],
-      plants: [], lastSeen: Date.now(), stats: { harvested: 0, earned: 0 },
+      plants: [], lastSeen: Date.now(), stats: { harvested: 0, earned: 0, upgrades: 0 },
     };
   }
   join(uid, info) {
     if (this.players.size >= MAX_PLAYERS) return { error: 'Servidor lleno (' + MAX_PLAYERS + ' jugadores)' };
     for (const p of this.players.values()) if (p.uid === uid) this.leave(p.id); // sesión duplicada
+    this.migrate(this.profiles.get(uid));
     const plot = this.plots.indexOf(null);
     const id = this.nextId++;
     const name = clampName(info.name);
@@ -210,11 +248,10 @@ export class World {
     // crecimiento offline (máx 1 hora)
     const away = Math.min(3600, Math.max(0, (Date.now() - (prof.lastSeen || Date.now())) / 1000));
     if (away > 5) for (const pl of prof.plants) this.growPlant(pl, away, 1);
-    const spawn = plotInfo(plot);
     const pl = {
       id, uid, plot, prof, name, avatar: String(info.avatar || prof.avatar || 'farmer'), owner: !!info.owner,
       x: SPAWN.x + (this.rng() - 0.5) * 6, z: SPAWN.z + (this.rng() - 0.5) * 6, ry: 0, mv: 0,
-      lastWater: 0, lastChat: 0, joinedAt: this.time,
+      lastWater: 0, lastChat: 0, joinedAt: this.time, posAt: Date.now(),
     };
     this.plots[plot] = id;
     this.players.set(id, pl);
@@ -237,14 +274,20 @@ export class World {
   pub(p) { return { id: p.id, name: p.name, avatar: p.avatar, owner: !!p.owner, plot: p.plot, x: p.x, z: p.z, ry: p.ry, sh: p.prof.sheckles, pets: p.prof.equipped.map((i) => p.prof.pets[i]) }; }
   me(p) {
     const f = p.prof;
-    return { name: p.name, sheckles: f.sheckles, seeds: f.seeds, eggs: f.eggs, gear: f.gear, fruits: f.fruits, pets: f.pets, equipped: f.equipped, stats: f.stats };
+    return { lvl: f.lvl | 0, name: p.name, sheckles: f.sheckles, seeds: f.seeds, eggs: f.eggs, gear: f.gear, fruits: f.fruits, pets: f.pets, equipped: f.equipped, stats: f.stats };
   }
   sendMe(p) { this.send(p.id, { t: 'me', me: this.me(p) }); }
   plotMsg(i) {
     const id = this.plots[i]; const pl = id && this.players.get(id);
-    return { t: 'plot', i, plants: pl ? pl.prof.plants.map(pubPlant) : [] };
+    return { t: 'plot', i, lvl: pl ? pl.prof.lvl | 0 : 0, plants: pl ? pl.prof.plants.map(pubPlant) : [] };
   }
-  allPlots() { const o = {}; this.players.forEach((p) => { o[p.plot] = p.prof.plants.map(pubPlant); }); return o; }
+  allPlots() { const o = {}; this.players.forEach((p) => { o[p.plot] = { lvl: p.prof.lvl | 0, plants: p.prof.plants.map(pubPlant) }; }); return o; }
+  // perfiles viejos (grilla 8x8, índice z*8+x) -> grilla 16x16 centrada
+  migrate(prof) {
+    if (!prof || prof.v >= 2) return prof;
+    for (const pl of prof.plants || []) { const gx = (pl.c % 8) + 4, gz = Math.floor(pl.c / 8) + 4; pl.c = gz * GRID + gx; }
+    prof.v = 2; prof.lvl = prof.lvl | 0; prof.stats = prof.stats || { harvested: 0, earned: 0 }; prof.stats.upgrades = prof.stats.upgrades | 0; return prof;
+  }
   sendPlot(i) { this.broadcast(this.plotMsg(i)); }
   toast(p, msg, kind) { this.send(p.id, { t: 'toast', msg, kind: kind || '' }); }
 
@@ -267,15 +310,18 @@ export class World {
   stockMsg() { return { seed: this.stock.seed, gear: this.stock.gear, egg: this.stock.egg, deal: this.stock.deal || null, next: this.nextRestock }; }
   weatherMsg() { return this.weather ? { k: this.weather.k, until: this.weather.until } : { k: null, until: 0 }; }
 
+  // ¿está el jugador DENTRO del círculo de interacción de ese NPC? (se comprueba en el servidor)
   near(p, shop) {
-    const n = NPCS[shop]; if (!n) return false;
-    return Math.hypot(p.x - n.x, p.z - n.z) <= NPC_RANGE;
+    const c = npcCircle(shop); if (!c) return false;
+    return Math.hypot(p.x - c.x, p.z - c.z) <= c.r + NPC_CIRCLE_TOL;
   }
+  // definición efectiva del evento (el Mystery usa el efecto oculto)
+  effEv(ev = this.event) { if (!ev) return null; return ev.inner ? EVENTS[ev.inner] : EVENTS[ev.k]; }
 
   // ---------------- Plantas ----------------
   growMult(p, plant) {
     let m = this.weather ? WEATHER[this.weather.k].grow : 1;
-    if (this.event) m *= EVENTS[this.event.k].grow || 1;
+    if (this.event) m *= this.effEv().grow || 1;
     const f = p.prof;
     for (const idx of f.equipped) { const pet = PETS[f.pets[idx]]; if (pet && pet.grow) m += pet.grow; }
     if (p.sprinklers) {
@@ -315,17 +361,18 @@ export class World {
     }
     // eventos globales
     if (this.event) {
-      const ev = EVENTS[this.event.k];
+      const ev = this.effEv();
       if (this.time >= this.event.until) this.endEvent(true);
       else if (ev.tick && this.time >= this.event.nextTick) {
         this.event.nextTick = this.time + ev.tick.every;
         this.players.forEach((p) => { this.grant(p, { sheckles: ev.tick.sheckles }); this.sendMe(p); this.send(p.id, { t: 'evtick', amt: ev.tick.sheckles }); });
       }
-    } else if (this.time >= this.nextEvent && this.players.size) { const ks = Object.keys(EVENTS); this.startEvent(ks[Math.floor(this.rng() * ks.length)]); }
+    } else if (this.time >= this.nextEvent && this.players.size) { const ks = Object.keys(EVENTS).filter((k) => k !== this.lastEvent); this.startEvent(ks[Math.floor(this.rng() * ks.length)]); }
+    else if (!this.noticed && this.players.size && this.nextEvent - this.time <= 30) { this.noticed = true; this.broadcast({ t: 'notice', msg: '⏳ ¡Un evento global empieza en 30 segundos!' }); }
     // restock
     if (this.time >= this.nextRestock) { this.restock(); this.broadcast({ t: 'stock', ...this.stockMsg() }); }
     // plantas
-    const w = this.weather && this.weather.k, ev = this.event && this.event.k;
+    const w = this.weather && this.weather.k, ev = this.event && this.effEv();
     this.players.forEach((p) => {
       if (p.sprinklers) p.sprinklers = p.sprinklers.filter((s) => s.until > this.time);
       let changed = false;
@@ -335,7 +382,7 @@ export class World {
         this.growPlant(pl, dt, this.growMult(p, pl));
         if ((w || ev) && !pl.k.startsWith('egg:')) {
           const nm = pl.m.length;
-          if (w) this.rollMutations(pl, WEATHER[w].muts, dt); if (ev) this.rollMutations(pl, EVENTS[ev].muts, dt);
+          if (w) this.rollMutations(pl, WEATHER[w].muts, dt); if (ev) this.rollMutations(pl, ev.muts, dt);
           if (pl.m.length !== nm) changed = true;
         }
         if (plantStage(pl) !== before || wasReady !== pl.ready) changed = true;
@@ -360,14 +407,29 @@ export class World {
     switch (m.t) {
       case 'pos': {
         if (!isFinite(m.x) || !isFinite(m.z)) return;
-        const r = Math.hypot(m.x, m.z);
-        const k = r > WORLD_RADIUS ? WORLD_RADIUS / r : 1;
-        p.x = m.x * k; p.z = m.z * k; p.ry = +m.ry || 0; p.mv = m.mv ? 1 : 0;
+        const now = Date.now(), el = Math.min(3, Math.max(0.05, (now - (p.posAt || now)) / 1000)); p.posAt = now;
+        const r = Math.hypot(m.x, m.z), k = r > WORLD_RADIUS ? WORLD_RADIUS / r : 1;
+        const nx = m.x * k, nz = m.z * k;
+        // anti-teletransporte: el servidor no acepta movimientos más rápidos que MAX_SPEED
+        if (Math.hypot(nx - p.x, nz - p.z) > MAX_SPEED * el + 3) { this.send(p.id, { t: 'fix', x: p.x, z: p.z }); return; }
+        p.x = nx; p.z = nz; p.ry = +m.ry || 0; p.mv = m.mv ? 1 : 0;
         break;
+      }
+      case 'tp': { // teletransporte permitido: solo a la plaza o a la entrada de MI parcela
+        let x = 0, z = 7;
+        if (m.to === 'garden') { const q = plotInfo(p.plot), d = Math.hypot(q.x, q.z), H = levelSize(f.lvl) * CELL / 2; x = q.x - q.x / d * (H + 4); z = q.z - q.z / d * (H + 4); }
+        p.x = x; p.z = z; p.posAt = Date.now(); p.mv = 0; this.send(p.id, { t: 'fix', x, z, tp: 1 }); break;
+      }
+      case 'upgrade': {
+        const lvl = f.lvl | 0; if (lvl >= PLOT_LEVELS.length - 1) return this.toast(p, 'Tu parcela ya está al máximo (16×16)', 'bad');
+        const cost = PLOT_LEVELS[lvl + 1].cost; if (f.sheckles < cost) return this.toast(p, 'Te faltan 💰' + (cost - f.sheckles) + ' para mejorar la parcela', 'bad');
+        f.sheckles -= cost; f.lvl = lvl + 1; f.stats.upgrades = (f.stats.upgrades | 0) + 1;
+        this.sendPlot(p.plot); this.sendMe(p); this.send(p.id, { t: 'upg', lvl: f.lvl });
+        this.broadcast({ t: 'notice', msg: '🏡 ' + p.name + ' amplió su parcela a ' + levelSize(f.lvl) + '×' + levelSize(f.lvl) }); break;
       }
       case 'plant': {
         const cell = m.cell | 0; const crop = CROPS[m.k];
-        if (!crop || cell < 0 || cell >= GRID * GRID) return;
+        if (!crop || !cellOk(f.lvl, cell)) return this.toast(p, 'Esa celda todavía no está desbloqueada', 'bad');
         if (!f.seeds[m.k] || f.seeds[m.k] <= 0) return this.toast(p, 'No tenés esa semilla', 'bad');
         if (f.plants.some((q) => q.c === cell)) return this.toast(p, 'Ya hay algo ahí', 'bad');
         if (!this.inPlotRange(p, cell)) return this.toast(p, 'Acercate más a tu parcela', 'bad');
@@ -379,7 +441,8 @@ export class World {
       }
       case 'place': { // huevos y aspersores
         const cell = m.cell | 0;
-        if (cell < 0 || cell >= GRID * GRID || f.plants.some((q) => q.c === cell)) return this.toast(p, 'Ya hay algo ahí', 'bad');
+        if (!cellOk(f.lvl, cell)) return this.toast(p, 'Esa celda todavía no está desbloqueada', 'bad');
+        if (f.plants.some((q) => q.c === cell)) return this.toast(p, 'Ya hay algo ahí', 'bad');
         if (!this.inPlotRange(p, cell)) return this.toast(p, 'Acercate más a tu parcela', 'bad');
         if (m.k in EGGS) {
           if (!f.eggs[m.k]) return;
@@ -434,6 +497,7 @@ export class World {
       }
       case 'hatch': {
         const pl = f.plants.find((q) => q.c === (m.cell | 0)); if (!pl || !pl.k.startsWith('egg:') || pl.p < pl.g) return;
+        if (!this.inPlotRange(p, pl.c)) return this.toast(p, 'Acercate más al huevo', 'bad');
         const egg = EGGS[pl.k.slice(4)];
         const pet = pickWeighted(this.rng, egg.pets);
         f.plants.splice(f.plants.indexOf(pl), 1);
@@ -474,7 +538,7 @@ export class World {
         else list = f.fruits.map((_, i) => i);
         if (!list.length) return this.toast(p, 'No tenés frutas para vender', 'bad');
         let bonus = 1; for (const idx of f.equipped) { const pet = PETS[f.pets[idx]]; if (pet && pet.sell) bonus += pet.sell; }
-        if (this.event) bonus += EVENTS[this.event.k].sellBonus || 0;
+        if (this.event) bonus += this.effEv().sellBonus || 0;
         let total = 0; for (const i of list) total += fruitValue(f.fruits[i]);
         total = Math.round(total * bonus);
         const set = new Set(list); f.fruits = f.fruits.filter((_, i) => !set.has(i));
@@ -516,15 +580,18 @@ export class World {
   }
   startEvent(k, by) {
     if (!EVENTS[k]) return; if (this.event) this.endEvent(false);
-    const ev = EVENTS[k];
-    this.event = { k, until: this.time + ev.dur, nextTick: this.time + ((ev.tick && ev.tick.every) || 1e9) };
+    const ev = EVENTS[k]; let inner = null;
+    if (ev.mystery) { const ks = Object.keys(EVENTS).filter((x) => !EVENTS[x].mystery); inner = ks[Math.floor(this.rng() * ks.length)]; }
+    const eff = inner ? EVENTS[inner] : ev;
+    this.event = { k, inner, until: this.time + ev.dur, nextTick: this.time + ((eff.tick && eff.tick.every) || 1e9) };
+    this.noticed = false;
     this.broadcast({ t: 'event', ...this.eventMsg(), by: by || null });
   }
   endEvent(reward) {
-    if (!this.event) return; const k = this.event.k, ev = EVENTS[k]; this.event = null;
-    if (reward && ev.reward) this.players.forEach((p) => { this.grant(p, ev.reward); this.sendMe(p); this.send(p.id, { t: 'evend', k, reward: ev.reward }); });
-    this.broadcast({ t: 'event', k: null, until: 0, ended: k });
-    this.nextEvent = this.time + rr(this.rng, EVENT_EVERY[0], EVENT_EVERY[1]);
+    if (!this.event) return; const k = this.event.k, inner = this.event.inner || null, ev = EVENTS[k]; this.event = null; this.lastEvent = k;
+    if (reward && ev.reward) this.players.forEach((p) => { this.grant(p, ev.reward); this.sendMe(p); this.send(p.id, { t: 'evend', k, inner, reward: ev.reward }); });
+    this.broadcast({ t: 'event', k: null, until: 0, ended: k, inner });
+    this.noticed = false; this.nextEvent = this.time + rr(this.rng, EVENT_EVERY[0], EVENT_EVERY[1]);
   }
   setWeather(k) {
     this.weather = k ? { k, until: this.time + WEATHER[k].dur } : null;
@@ -533,9 +600,9 @@ export class World {
   }
   adminState() {
     const players = [...this.players.values()].map((q) => {
-      const crops = {}; let ready = 0, mut = 0, eggs = 0;
-      for (const x of q.prof.plants) { if (x.k.startsWith('egg:')) { eggs++; continue; } crops[x.k] = (crops[x.k] || 0) + 1; if (x.ready) ready++; if (x.m.length) mut++; }
-      return { id: q.id, name: q.name, owner: !!q.owner, plot: q.plot, sh: q.prof.sheckles, plants: q.prof.plants.length, ready, mut, eggs, crops, pets: q.prof.pets.length, fruits: q.prof.fruits.length, x: Math.round(q.x), z: Math.round(q.z) };
+      const crops = {}, muts = {}; let ready = 0, mut = 0, eggs = 0;
+      for (const x of q.prof.plants) { if (x.k.startsWith('egg:')) { eggs++; continue; } crops[x.k] = (crops[x.k] || 0) + 1; if (x.ready) ready++; if (x.m.length) mut++; for (const mm of x.m) muts[mm] = (muts[mm] || 0) + 1; }
+      return { lvl: q.prof.lvl | 0, size: levelSize(q.prof.lvl), muts, id: q.id, name: q.name, owner: !!q.owner, plot: q.plot, sh: q.prof.sheckles, plants: q.prof.plants.length, ready, mut, eggs, crops, pets: q.prof.pets.length, fruits: q.prof.fruits.length, x: Math.round(q.x), z: Math.round(q.z) };
     });
     return { players, max: MAX_PLAYERS, weather: this.weatherMsg(), event: this.eventMsg(), nextRestock: this.nextRestock, nextEvent: this.nextEvent, now: this.time, ...this.extra() };
   }
@@ -576,7 +643,7 @@ export class World {
     this.players.forEach((p) => { p.prof.lastSeen = Date.now(); });
     return o;
   }
-  importProfiles(o) { for (const k in o || {}) this.profiles.set(k, o[k]); }
+  importProfiles(o) { for (const k in o || {}) this.profiles.set(k, this.migrate(o[k])); }
 }
 
 function pubPlant(p) { return { c: p.c, k: p.k, p: +p.p.toFixed(1), g: p.g, r: p.ready ? 1 : 0, m: p.m, w: p.w }; }
